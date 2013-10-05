@@ -40,6 +40,15 @@ extern zend_module_entry websockets_module_entry;
 
 ZEND_BEGIN_MODULE_GLOBALS(websockets)
 	char* temp_buffer;
+	int step;
+	
+	int FIN;
+	int RSV1;
+	int RSV2;
+	int RSV3;
+	int opcode;
+	int haveMask;
+	long len;
 ZEND_END_MODULE_GLOBALS(websockets)
 
 #ifdef ZTS

@@ -176,10 +176,10 @@ PHP_FUNCTION(ws_handshake) {
 				ap_remove_input_filter(input_filter);
 				break;
 		}
-	}    
+	}
 	
 	apr_table_clear(r->headers_out);
-	apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
+	//apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
 
 
 
@@ -223,6 +223,8 @@ PHP_FUNCTION(ws_handshake) {
         efree(sec);
         sapi_flush(TSRMLS_C);
 		
+		WS_G(step) = 0;
+
         RETURN_TRUE;
     }
 	
@@ -249,8 +251,67 @@ PHP_FUNCTION(ws_send) {
     RETURN_FALSE;
 }
 
-void getDataFromClient() {
+int parse_message(char *buffer, long blen) {
+	long offset = 0;
 	
+	//read header
+	if(WS_G(step) == 0) {
+		WS_G(FIN) = (buffer[0] >> 7) & 1;
+		WS_G(RSV1) = (buffer[0] >> 6) & 1;
+		WS_G(RSV2) =(buffer[0] >> 5) & 1;
+		WS_G(RSV3) =(buffer[0] >> 4) & 1;
+		
+		WS_G(opcode) = (buffer[0] & 0x0F);
+
+		WS_G(haveMask) = (buffer[1] >> 7) & 1;
+		WS_G(len) = buffer[1] & 0x7f;
+		
+		if(WS_G(len) <= 125) {
+			WS_G(step) = 2;
+		} else {
+			WS_G(step) = 1;		
+		}
+
+		offset += 2;
+	}
+
+	//read length
+	if(WS_G(step) == 1) {
+		
+		if (WS_G(len) == 126 && blen >= offset + 1) {
+			WS_G(len) = buffer[offset] << 8 | buffer[offset + 1];
+			offset += 2;
+		} else if(blen < offset + 1){
+			return 0;
+		}
+
+		if (WS_G(len) == 127 && blen >= offset + 8) {
+			long l = ((long)buffer[offset]) << 56 | 
+					 ((long)buffer[offset + 1]) << 48 | 
+					 ((long)buffer[offset + 2]) << 40 | 
+					 ((long)buffer[offset + 3]) << 32 | 
+					 ((long)buffer[offset + 4]) << 24 | 
+					 ((long)buffer[offset + 5]) << 16 | 
+					 ((long)buffer[offset + 6]) << 8 | 
+					 ((long)buffer[offset + 7]);
+					 
+			WS_G(len) = l;
+			offset += 8;
+		} else if(blen < offset + 8) {
+			return 0;		
+		}
+	}
+
+	//get the mask
+	if(WS_G(step) == 2) {
+		if(WS_G(haveMask)) {
+			
+		} else {
+			WS_G(step) = 3;
+		}
+	}
+
+	return 1;
 }
 
 PHP_FUNCTION(ws_receive) {
@@ -261,8 +322,8 @@ PHP_FUNCTION(ws_receive) {
 	
 	int reading = 1;
 
-	char *buffer = emalloc(256);
-	apr_size_t bufsiz = 256;
+	char buffer[512];
+	apr_size_t bufsiz = 512;
 
 	sapi_flush(TSRMLS_C);
 	apr_pool_t *pool = NULL;
@@ -272,27 +333,24 @@ PHP_FUNCTION(ws_receive) {
         ((bucket_alloc = apr_bucket_alloc_create(pool)) != NULL) &&
         ((bb = apr_brigade_create(pool, bucket_alloc)) != NULL)) {	
 
-		if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_NONBLOCK_READ, bufsiz)) == APR_SUCCESS) {
+		if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, bufsiz)) == APR_SUCCESS) {
 			if ((rv = apr_brigade_flatten(bb, buffer, &bufsiz)) == APR_SUCCESS) {
-		        
-				//WS_G(temp_buffer) = buffer;
+				
+				if(bufsiz > 0) {					
+					parse_message(buffer, bufsiz);				
+				}
+
+				//WS_G(temp_buffer) = frame_concat(WS_G(temp_buffer), strlen(WS_G(temp_buffer)), buffer, strlen(buffer));
 		    }
 		}
 	}
+	
+	char *key = emalloc(100);
+    sprintf(key, "msg len %i \n", WS_G(len));
+	
+	php_error_docref(NULL TSRMLS_CC, E_WARNING, key);
 
     apr_brigade_destroy(bb);
-	efree(buffer);
-
-	
-	/*getDataFromClient();
-	
-	int length = strlen(WS_G(temp_buffer));
-
-	if(length == 0) {
-		RETURN_FALSE;
-	}
-
-	php_printf("BUFFER: %s\n\n", WS_G(temp_buffer));*/
 }
 
 PHP_FUNCTION(ws_close) {
