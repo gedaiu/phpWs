@@ -39,7 +39,8 @@ extern zend_module_entry websockets_module_entry;
 #define phpext_websockets_ptr &websockets_module_entry
 
 ZEND_BEGIN_MODULE_GLOBALS(websockets)
-	char* temp_buffer;
+	char *buffer;
+	long offset;
 	int step;
 	
 	int FIN;
@@ -49,6 +50,14 @@ ZEND_BEGIN_MODULE_GLOBALS(websockets)
 	int opcode;
 	int haveMask;
 	long len;
+	long pos;
+	char mask[4];
+	char *payload; 
+	
+	apr_pool_t *pool;
+
+    apr_bucket_alloc_t *bucket_alloc;    
+	apr_bucket_brigade *obb;
 ZEND_END_MODULE_GLOBALS(websockets)
 
 #ifdef ZTS

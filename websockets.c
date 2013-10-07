@@ -22,7 +22,6 @@ PHP_MINIT_FUNCTION(websockets)
 
 PHP_RINIT_FUNCTION(websockets_request) {
 	
-
 	return SUCCESS;
 }
 
@@ -123,7 +122,7 @@ char* encode_ws_frame(char* data, int opcode) {
 	}
 
 	//append message	
-	frame = frame_concat(frame, strlen(frame), data, strlen(data));
+	frame = frame_concat(frame, strlen(frame), data, len);
 	
 	return frame;
 }
@@ -159,6 +158,10 @@ PHP_FUNCTION(is_ws)
 PHP_FUNCTION(ws_handshake) {
 
 	
+	WS_G(offset) = 0;
+	WS_G(pos) = 0;
+	WS_G(buffer) = "";
+
 	/*
 	* Since we are handling a WebSocket connection, not a standard HTTP
 	* connection, remove the HTTP input filter.
@@ -175,7 +178,7 @@ PHP_FUNCTION(ws_handshake) {
 			!strcasecmp(input_filter->frec->name, "http_in")) {
 				ap_remove_input_filter(input_filter);
 				break;
-		}
+			}
 	}
 	
 	apr_table_clear(r->headers_out);
@@ -203,7 +206,7 @@ PHP_FUNCTION(ws_handshake) {
     char *clientKey = getHeader("HTTP_SEC_WEBSOCKET_KEY"); 
 
     if(clientKey != NULL) {
-        //create the key
+        //crea 	te the key
         char *key = emalloc(100);
         sprintf(key, "%s258EAFA5-E914-47DA-95CA-C5AB0DC85B11", clientKey);
 
@@ -224,6 +227,37 @@ PHP_FUNCTION(ws_handshake) {
         sapi_flush(TSRMLS_C);
 		
 		WS_G(step) = 0;
+
+		apr_pool_create(&WS_G(pool), r->pool);
+        WS_G(bucket_alloc) = apr_bucket_alloc_create(WS_G(pool));
+		WS_G(obb) = apr_brigade_create(WS_G(pool), WS_G(bucket_alloc));
+
+		ap_filter_t *out_filter;
+	
+		for (out_filter = r->output_filters;
+			out_filter != NULL;
+			out_filter = out_filter->next) {
+				if ((out_filter->frec != NULL) &&
+				(out_filter->frec->name != NULL) &&
+				strcasecmp(out_filter->frec->name, "core")) {
+					ap_remove_output_filter(out_filter);
+				}
+
+				if ((out_filter->frec != NULL) &&
+				(out_filter->frec->name != NULL) &&
+				!strcasecmp(out_filter->frec->name, "old_write")) {
+					ap_remove_output_filter(out_filter);
+				}
+		}
+		/*php_printf("\n\n->PLUGINS: \n");
+		for (out_filter = r->output_filters;
+			out_filter != NULL;
+			out_filter = out_filter->next) {
+				if ((out_filter->frec != NULL) &&
+				(out_filter->frec->name != NULL)) {
+					php_printf("->%s\n", out_filter->frec->name);
+			}
+		}*/
 
         RETURN_TRUE;
     }
@@ -247,57 +281,82 @@ PHP_FUNCTION(ws_send) {
 	//send data
 	php_printf("%s", frame);
 	sapi_flush(TSRMLS_C);
+	/*request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
+
+	ap_filter_t *of = r->connection->output_filters;
+
+	ap_fwrite(of, WS_G(obb), frame, strlen(frame));
+   	ap_fflush(of, WS_G(obb));
+*/
 
     RETURN_FALSE;
 }
 
 int parse_message(char *buffer, long blen) {
-	long offset = 0;
-	
+
 	//read header
-	if(WS_G(step) == 0) {
+	if(WS_G(step) == 0 && blen >= 2) {
 		WS_G(FIN) = (buffer[0] >> 7) & 1;
 		WS_G(RSV1) = (buffer[0] >> 6) & 1;
 		WS_G(RSV2) =(buffer[0] >> 5) & 1;
 		WS_G(RSV3) =(buffer[0] >> 4) & 1;
-		
+	
 		WS_G(opcode) = (buffer[0] & 0x0F);
 
 		WS_G(haveMask) = (buffer[1] >> 7) & 1;
 		WS_G(len) = buffer[1] & 0x7f;
-		
-		if(WS_G(len) <= 125) {
-			WS_G(step) = 2;
-		} else {
-			WS_G(step) = 1;		
-		}
 
-		offset += 2;
+		efree(WS_G(payload));
+		WS_G(payload) = emalloc(WS_G(len) + 1);
+		WS_G(payload)[WS_G(len)] = 0;
+	
+
+		if(WS_G(opcode) == 1 || WS_G(opcode) == 2) { 
+			if(WS_G(len) <= 125) {
+				WS_G(step) = 2;
+			} else {
+				WS_G(step) = 1;		
+			}
+		
+			WS_G(pos) = 0;	 
+		} else if(WS_G(opcode) == 8) { //closeframe
+			request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
+			ap_lingering_close(r->connection);
+		}
+		
+		WS_G(offset) += 2;
 	}
+
+
 
 	//read length
 	if(WS_G(step) == 1) {
-		
-		if (WS_G(len) == 126 && blen >= offset + 1) {
-			WS_G(len) = buffer[offset] << 8 | buffer[offset + 1];
-			offset += 2;
-		} else if(blen < offset + 1){
+	
+		if (WS_G(len) == 126 && blen >= WS_G(offset) + 1) {
+			WS_G(len) = buffer[WS_G(offset)] << 8 | buffer[WS_G(offset) + 1];
+
+			WS_G(payload) = emalloc(WS_G(len) + 1);
+			WS_G(payload)[WS_G(len)] = 0;
+			WS_G(offset) += 2;
+		} else if(blen < WS_G(offset) + 1){
 			return 0;
 		}
 
-		if (WS_G(len) == 127 && blen >= offset + 8) {
-			long l = ((long)buffer[offset]) << 56 | 
-					 ((long)buffer[offset + 1]) << 48 | 
-					 ((long)buffer[offset + 2]) << 40 | 
-					 ((long)buffer[offset + 3]) << 32 | 
-					 ((long)buffer[offset + 4]) << 24 | 
-					 ((long)buffer[offset + 5]) << 16 | 
-					 ((long)buffer[offset + 6]) << 8 | 
-					 ((long)buffer[offset + 7]);
+		if (WS_G(len) == 127 && blen >= WS_G(offset) + 8) {
+			long l = ((long)buffer[WS_G(offset)]) << 56 | 
+					 ((long)buffer[WS_G(offset) + 1]) << 48 | 
+					 ((long)buffer[WS_G(offset) + 2]) << 40 | 
+					 ((long)buffer[WS_G(offset) + 3]) << 32 | 
+					 ((long)buffer[WS_G(offset) + 4]) << 24 | 
+					 ((long)buffer[WS_G(offset) + 5]) << 16 | 
+					 ((long)buffer[WS_G(offset) + 6]) << 8 | 
+					 ((long)buffer[WS_G(offset) + 7]);
 					 
 			WS_G(len) = l;
-			offset += 8;
-		} else if(blen < offset + 8) {
+			WS_G(payload) = emalloc(WS_G(len) + 1);
+			WS_G(payload)[WS_G(len)] = 0;
+			WS_G(offset) += 8;
+		} else if(blen < WS_G(offset) + 8) {
 			return 0;		
 		}
 	}
@@ -305,13 +364,54 @@ int parse_message(char *buffer, long blen) {
 	//get the mask
 	if(WS_G(step) == 2) {
 		if(WS_G(haveMask)) {
-			
-		} else {
-			WS_G(step) = 3;
+			memcpy(WS_G(mask), buffer+WS_G(offset), 4);
+			WS_G(offset) += 4;
 		}
+
+		WS_G(step) = 3;
 	}
 
-	return 1;
+	//get the payload
+	if(WS_G(step) == 3) {
+		while(WS_G(offset) < blen && WS_G(pos) < WS_G(len)) {
+			if(WS_G(haveMask)) {
+				WS_G(payload)[WS_G(pos)] = buffer[WS_G(offset)] ^ WS_G(mask)[WS_G(pos) % 4];
+/*
+				char *str = emalloc(100);
+				sprintf(str, "msg 0 %i = %i %c|",WS_G(pos),  WS_G(payload)[WS_G(pos)],  WS_G(payload)[WS_G(pos)]);
+				char *frame = encode_ws_frame(str, 1); 
+
+				//send data
+				php_printf("%s", frame);
+				sapi_flush(TSRMLS_C);*/
+
+
+			} else {
+				WS_G(payload)[WS_G(pos)] = buffer[WS_G(offset)];
+			}
+		
+		
+			WS_G(offset)++;
+			WS_G(pos)++;
+		}
+	}
+	/*int i =0;
+	for(i=0;i<strlen(WS_G(payload)); i++) {
+		char *str2 = emalloc(100);
+		sprintf(str2, "msg ch %i %i %c|",i, WS_G(payload)[i], WS_G(payload)[i]);
+		char *frame2 = encode_ws_frame(str2, 1); 
+
+		//send data
+		php_printf("%s", frame2);
+		sapi_flush(TSRMLS_C); 
+	}*/
+
+	if(WS_G(pos) >= WS_G(len) && WS_G(len) > 0) {
+		WS_G(step) = 0;
+		return 1;
+	}
+	
+	return 0;
 }
 
 PHP_FUNCTION(ws_receive) {
@@ -322,35 +422,65 @@ PHP_FUNCTION(ws_receive) {
 	
 	int reading = 1;
 
-	char buffer[512];
-	apr_size_t bufsiz = 512;
+	char buffer[4000];
+	apr_size_t bufsiz = 4000;
 
 	sapi_flush(TSRMLS_C);
-	apr_pool_t *pool = NULL;
-    apr_bucket_alloc_t *bucket_alloc;
 
-	if ((apr_pool_create(&pool, r->pool) == APR_SUCCESS) &&
-        ((bucket_alloc = apr_bucket_alloc_create(pool)) != NULL) &&
-        ((bb = apr_brigade_create(pool, bucket_alloc)) != NULL)) {	
+	int res = 0;
+	
+	bb = apr_brigade_create(WS_G(pool), WS_G(bucket_alloc));
 
-		if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, bufsiz)) == APR_SUCCESS) {
-			if ((rv = apr_brigade_flatten(bb, buffer, &bufsiz)) == APR_SUCCESS) {
-				
-				if(bufsiz > 0) {					
-					parse_message(buffer, bufsiz);				
-				}
+	if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, bufsiz)) == APR_SUCCESS) {
+		if ((rv = apr_brigade_flatten(bb, buffer, &bufsiz)) == APR_SUCCESS) {
+			
+			if(bufsiz > 0) {
+				WS_G(buffer) = frame_concat(WS_G(buffer), strlen(WS_G(buffer)), buffer, bufsiz);	
+			}
+			
+			//decode frames
+			if(strlen(WS_G(buffer)) > 0) {
+				res = parse_message(buffer, strlen(buffer));
+						
 
-				//WS_G(temp_buffer) = frame_concat(WS_G(temp_buffer), strlen(WS_G(temp_buffer)), buffer, strlen(buffer));
-		    }
-		}
+				//remove consumed data
+				if(WS_G(offset) > 0) {
+					if(strlen(WS_G(buffer)) > WS_G(offset)) {
+						char *cpy;
+						memcpy(cpy, WS_G(buffer), strlen(WS_G(buffer)) - WS_G(offset));
+						efree(WS_G(buffer));
+					
+						WS_G(buffer) = cpy;
+					} else {
+						efree(WS_G(buffer));
+						WS_G(buffer) = "";
+					}
+
+					WS_G(offset) = 0;
+				}	
+			}
+	    }
 	}
 	
-	char *key = emalloc(100);
-    sprintf(key, "msg len %i \n", WS_G(len));
-	
-	php_error_docref(NULL TSRMLS_CC, E_WARNING, key);
-
     apr_brigade_destroy(bb);
+
+	if(res == 1 && WS_G(len) > 0) {
+		/*char *str2 = emalloc(100);
+		sprintf(str2, "%s\0", WS_G(payload));
+		char *frame2 = encode_ws_frame(str2, 1); 
+
+		//send data
+		php_printf("%s", frame2);
+		sapi_flush(TSRMLS_C); 	
+		efree(WS_G(payload));*/
+		RETURN_STRING( WS_G(payload),  WS_G(len));
+	}
+	//char *key = emalloc(100);
+    //sprintf(key, "msg len %s \n", WS_G(payload));
+	//php_error_docref(NULL TSRMLS_CC, E_WARNING, key);
+	
+	RETURN_FALSE;
+
 }
 
 PHP_FUNCTION(ws_close) {
