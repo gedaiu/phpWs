@@ -40,6 +40,7 @@ extern zend_module_entry websockets_module_entry;
 
 ZEND_BEGIN_MODULE_GLOBALS(websockets)
 	char *buffer;
+	long bufferLen;
 	long offset;
 	int step;
 	
