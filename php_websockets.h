@@ -50,7 +50,7 @@ ZEND_BEGIN_MODULE_GLOBALS(websockets)
 	int RSV3;
 	int opcode;
 	int haveMask;
-	long len;
+	unsigned long len;
 	long pos;
 	char mask[4];
 	char *payload; 

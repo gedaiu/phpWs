@@ -5,6 +5,8 @@
 #include "php.h"
 #include "php_websockets.h"
 
+#define FRAME_SET_LENGTH(X64, IDX)  (unsigned char)(((X64) >> ((IDX)*8)) & 0xFF)
+
 static zend_function_entry websockets_functions[] = {
     PHP_FE(is_ws, NULL)
     PHP_FE(ws_handshake, NULL)
@@ -225,12 +227,12 @@ PHP_FUNCTION(ws_handshake) {
 
 
 void ws_send_message(char* str, long len, int opcode) {
-	char *frame = emalloc(2);	
+	char *frame;
+
 	int frameLen = 0;
 	if(len < 0) {
 		len = strlen(str);	
 	}
-
 
 	int FIN = 1;
 	int RSV1 = 0;
@@ -244,17 +246,46 @@ void ws_send_message(char* str, long len, int opcode) {
 	b |= RSV3 << 4;
 	b |= ((opcode) & 0x0F);
 	
-	frame[0] = b;
+	
 	
 	if(len <= 125) {
+		frame = emalloc(2);
+		frameLen = 2;
+		frame[0] = b;
+
 		b = (char) len; //set the message length
 		b |= (0 << 7); //set off the mask
 
 		frame[1] = b;	
-		frameLen = 2;
+	} else if (len <= 255 * 255 - 1) {
+		frame = emalloc(4);	
+		frameLen = 4;
+		frame[0] = b;
+
+		b = 126;
+		b |= (0 << 7);
+		frame[1] = b;
+		frame[2] = FRAME_SET_LENGTH(len, 1);
+        frame[3] = FRAME_SET_LENGTH(len, 0);
+	} else {
+		frame = emalloc(10);	
+		frameLen = 10;
+		frame[0] = b;
+
+		b = 127;
+		b |= (0 << 7);
+		frame[1] = b;
+		frame[2] = FRAME_SET_LENGTH(len, 7);
+		frame[3] = FRAME_SET_LENGTH(len, 6);
+		frame[4] = FRAME_SET_LENGTH(len, 5);
+		frame[5] = FRAME_SET_LENGTH(len, 4);
+		frame[6] = FRAME_SET_LENGTH(len, 3);
+		frame[7] = FRAME_SET_LENGTH(len, 2);
+		frame[8] = FRAME_SET_LENGTH(len, 1);
+        frame[9] = FRAME_SET_LENGTH(len, 0);
 	}
 
-	PHPWRITE(frame, 2);
+	PHPWRITE(frame, frameLen);
 	sapi_flush(TSRMLS_C);
 
 	//send data
@@ -301,10 +332,9 @@ int parse_message(char *buffer, long blen) {
 			if(WS_G(len) <= 125) {
 				WS_G(step) = 2;
 			} else {
-				WS_G(step) = 1;		
+				WS_G(step) = 1;	
 			}
-		
-			WS_G(pos) = 0;	
+			
 			WS_G(offset) += 2;
 		} else if(WS_G(opcode) == 8) { //closeframe
 			request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
@@ -316,7 +346,7 @@ int parse_message(char *buffer, long blen) {
 			
 			//send pong
 			ws_send_message("", 0, 10);
-		} else {
+		} else { //try to resolve errors or unknown frames
 			WS_G(offset) += 2;	
 			WS_G(step) = 0;		
 		}
@@ -324,32 +354,35 @@ int parse_message(char *buffer, long blen) {
 
 	//read length
 	if(WS_G(step) == 1) {
-		if (WS_G(len) == 126 && WS_G(offset) + 1 < blen) {
-			WS_G(len) = buffer[WS_G(offset)] << 8 | buffer[WS_G(offset) + 1];
+		
+		if (WS_G(len) == 126 && WS_G(offset) + 2 < blen) {
+			WS_G(len) = 0;
+			WS_G(len) = ((unsigned char)buffer[WS_G(offset)] << 8) + (unsigned char)buffer[WS_G(offset) + 1];
 
 			WS_G(payload) = emalloc(WS_G(len) + 1);
 			WS_G(payload)[WS_G(len)] = 0;
-			WS_G(offset) += 2;
-		} else if(blen < WS_G(offset) + 1){
-			return 0;
-		}
-
+			WS_G(offset) += 2; 
+	
+			WS_G(step) = 2;
+		} 
+	
 		if (WS_G(len) == 127 && WS_G(offset) + 8 < blen) {
-			long l = ((long)buffer[WS_G(offset)]) << 56 | 
-					 ((long)buffer[WS_G(offset) + 1]) << 48 | 
-					 ((long)buffer[WS_G(offset) + 2]) << 40 | 
-					 ((long)buffer[WS_G(offset) + 3]) << 32 | 
-					 ((long)buffer[WS_G(offset) + 4]) << 24 | 
-					 ((long)buffer[WS_G(offset) + 5]) << 16 | 
-					 ((long)buffer[WS_G(offset) + 6]) << 8 | 
-					 ((long)buffer[WS_G(offset) + 7]);
-					 
+			
+			long l = (long)((unsigned char)buffer[WS_G(offset)]) << 56 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 1]) << 48 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 2]) << 40 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 3]) << 32 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 4]) << 24 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 5]) << 16 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 6]) << 8 | 
+					 (long)((unsigned char)buffer[WS_G(offset) + 7]);
+					
 			WS_G(len) = l;
 			WS_G(payload) = emalloc(WS_G(len) + 1);
 			WS_G(payload)[WS_G(len)] = 0;
 			WS_G(offset) += 8;
-		} else if(blen < WS_G(offset) + 8) {
-			return 0;		
+
+			WS_G(step) = 2;
 		}
 	}
 
@@ -378,6 +411,7 @@ int parse_message(char *buffer, long blen) {
 
 		if(WS_G(pos) == WS_G(len)) {
 			WS_G(step) = 0;
+			WS_G(pos) = 0;
 			return 1;
 		}
 	}
@@ -393,8 +427,8 @@ PHP_FUNCTION(ws_receive) {
 	
 	int reading = 1;
 
-	char *buffer = emalloc(10);
-	apr_size_t bufsiz = 10;
+	char *buffer = emalloc(2048);
+	apr_size_t bufsiz = 2048;
 
 	sapi_flush(TSRMLS_C);
 
@@ -402,13 +436,9 @@ PHP_FUNCTION(ws_receive) {
 	
 	bb = apr_brigade_create(WS_G(pool), WS_G(bucket_alloc));
 
-	if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, bufsiz)) == APR_SUCCESS) {
+	if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_NONBLOCK_READ, bufsiz)) == APR_SUCCESS) {
 		if ((rv = apr_brigade_flatten(bb, buffer, &bufsiz)) == APR_SUCCESS) {
 			if(bufsiz > 0) {
-				/*char *str2 = emalloc(100);
-				sprintf(str2, "realloc %i %i", WS_G(bufferLen), bufsiz);		
-				ws_send_message(str2,-1,1);*/
-
 				WS_G(buffer) = erealloc(WS_G(buffer), WS_G(bufferLen) + bufsiz);
 				memcpy(WS_G(buffer) + WS_G(bufferLen), buffer, bufsiz);
 				WS_G(bufferLen) += bufsiz;
@@ -422,37 +452,25 @@ PHP_FUNCTION(ws_receive) {
 		res = parse_message(WS_G(buffer), WS_G(bufferLen));
 		
 		//remove consumed data
-		if(WS_G(offset) > 0) {
+		/*if(WS_G(offset) > 0) {
 			if(WS_G(bufferLen) > WS_G(offset)) {
-				/*char *cpy;
-				memcpy(cpy, WS_G(buffer) + WS_G(offset), strlen(WS_G(buffer)) - WS_G(offset));
-				efree(WS_G(buffer));
-			
-				WS_G(buffer) = cpy;*/
+				WS_G(bufferLen) -= WS_G(offset);
+				memmove(WS_G(buffer), WS_G(buffer)+WS_G(offset), WS_G(bufferLen));
+				WS_G(buffer) = erealloc(WS_G(buffer), WS_G(bufferLen));
+				
 			} else {
-				/*WS_G(buffer) = erealloc(WS_G(buffer), 20);
+				WS_G(buffer) = erealloc(WS_G(buffer), 20);
 				WS_G(bufferLen) = 0;
-				WS_G(offset) = 0;*/
+				WS_G(offset) = 0;
 			}
-		}
+		}*/
 	}
 
     apr_brigade_destroy(bb);
 
 	if(res == 1 && WS_G(len) > 0) {
-		/*char *str2 = emalloc(100);
-		sprintf(str2, "%s\0", WS_G(payload));
-		char *frame2 = encode_ws_frame(str2, 1); 
-
-		//send data
-		php_printf("%s", frame2);
-		sapi_flush(TSRMLS_C); 	
-		efree(WS_G(payload));*/
 		RETURN_STRING( WS_G(payload),  WS_G(len));
 	}
-	//char *key = emalloc(100);
-    //sprintf(key, "msg len %s \n", WS_G(payload));
-	//php_error_docref(NULL TSRMLS_CC, E_WARNING, key);
 	
 	RETURN_FALSE;
 
