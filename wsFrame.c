@@ -30,6 +30,9 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_frame___toString, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_frame_encode, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_frame_push, 0, 0, 1)
 	ZEND_ARG_INFO(0, string)
 ZEND_END_ARG_INFO()
@@ -77,6 +80,7 @@ zend_function_entry ws_frame_methods[] = {
 
 	PHP_ME(WsFrame, __toString, arginfo_ws_frame___toString, ZEND_ACC_PUBLIC)
 	PHP_ME(WsFrame, push, arginfo_ws_frame_push, ZEND_ACC_PUBLIC)
+	PHP_ME(WsFrame, encode, arginfo_ws_frame_push, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
 };
 
@@ -90,5 +94,9 @@ PHP_METHOD(WsFrame, __toString) {
 }
 
 PHP_METHOD(WsFrame, push) {
+
+}
+
+PHP_METHOD(WsFrame, encode) {
 
 }
