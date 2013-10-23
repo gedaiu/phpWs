@@ -36,9 +36,22 @@ static zend_function_entry websockets_functions[] = {
 }; 
 
 
+zend_object_handlers ws_frame_object_handlers;
+zend_class_entry *ws_frame_ce;
+
 PHP_MINIT_FUNCTION(websockets)
 {
-    return SUCCESS;
+	zend_class_entry ce;
+
+	//initialize wsFrame class
+	INIT_CLASS_ENTRY(ce, "WsFrame", ws_frame_methods);
+	ws_frame_ce = zend_register_internal_class(&ce TSRMLS_CC);
+	ws_frame_ce->create_object = ws_frame_create_handler;
+
+	memcpy(&ws_frame_object_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+	ws_frame_object_handlers.clone_obj = NULL;
+
+	return SUCCESS;
 }
 
 PHP_RINIT_FUNCTION(websockets_request) {
@@ -173,7 +186,8 @@ PHP_FUNCTION(ws_handshake) {
 
 
     //set the status
-    sapi_header_op(SAPI_HEADER_SET_STATUS, 101 TSRMLS_CC);
+	int responseNo = 101;
+    sapi_header_op(SAPI_HEADER_SET_STATUS, &responseNo TSRMLS_CC);
     
     //websocket headers
     sapi_header_line ctr = {0};

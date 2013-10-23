@@ -8,6 +8,7 @@
 #include <openssl/md5.h> /* md5 hash */
 #include <openssl/sha.h> /* sha1 hash */
 #include "php.h"
+#include "httpd.h"
 #include "ext/standard/php_standard.h"
 #include "ext/date/php_date.h"
 #include "php_main.h"
@@ -17,6 +18,8 @@
 
 #include "SAPI.h"
 
+//extension classes
+#include "wsFrame.h"
 
 #ifdef TM_IN_SYS_TIME
 	#include <sys/time.h>
@@ -66,6 +69,9 @@ ZEND_END_MODULE_GLOBALS(websockets)
 #else
 #define WS_G(v) (websockets_globals.v)
 #endif
+
+
+extern zend_class_entry *ws_frame_ce;
 
 
 #define http_got_server_var(v) (NULL != http_get_server_var_ex((v), strlen(v), 1))
