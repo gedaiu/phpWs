@@ -46,18 +46,6 @@ void ws_frame_free_storage(void *object TSRMLS_DC) {
  * Create CmsValueObject
  */
 zend_object_value ws_frame_create_handler(zend_class_entry *ce TSRMLS_DC) {
-	//zend_object_value zov;
-
-	/* The destroy and free callbacks should be replaced if necessary */
-	//zov.handle = zend_objects_store_put(NULL,
-	//(zend_objects_store_dtor_t) zend_objects_destroy_object,
-	//(zend_objects_free_object_storage_t) ws_frame_free_storage,
-	//NULL TSRMLS_CC);
-
-	//ws_frame_object_handlers.get_debug_info = ws_frame_get_debug_info;
-	//zov.handlers = &ws_frame_object_handlers;
-
-	//return zov;
 
 	zend_object_value       retval;
 	ws_frame_object*   intern;

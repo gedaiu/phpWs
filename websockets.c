@@ -51,6 +51,22 @@ PHP_MINIT_FUNCTION(websockets)
 	memcpy(&ws_frame_object_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
 	ws_frame_object_handlers.clone_obj = NULL;
 
+	//payload
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("currentLength")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("payloadLength")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_string(ws_frame_ce, ZEND_STRS("payloadData")-1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
+
+	//frame header
+	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("FIN")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("RSV1")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("RSV2")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("RSV3")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("opcode")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+
+	//masking data
+	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("haveMask")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_string(ws_frame_ce, ZEND_STRS("mask")-1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
+
 	return SUCCESS;
 }
 
