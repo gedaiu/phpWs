@@ -62,6 +62,8 @@ ZEND_BEGIN_MODULE_GLOBALS(websockets)
 
     apr_bucket_alloc_t *bucket_alloc;    
 	apr_bucket_brigade *obb;
+
+	zval *zobj_wsFrame;
 ZEND_END_MODULE_GLOBALS(websockets)
 
 #ifdef ZTS

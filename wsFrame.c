@@ -23,6 +23,8 @@
 
 #include "wsFrame.h"
 
+extern zend_object_handlers ws_frame_object_handlers;
+extern zend_class_entry *ws_frame_ce;
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_frame___construct, 0, 0, 0)
 ZEND_END_ARG_INFO()
@@ -35,6 +37,9 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_frame_push, 0, 0, 1)
 	ZEND_ARG_INFO(0, string)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_frame_is_ready, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
 /**
@@ -81,6 +86,7 @@ zend_function_entry ws_frame_methods[] = {
 	PHP_ME(WsFrame, __toString, arginfo_ws_frame___toString, ZEND_ACC_PUBLIC)
 	PHP_ME(WsFrame, push, arginfo_ws_frame_push, ZEND_ACC_PUBLIC)
 	PHP_ME(WsFrame, encode, arginfo_ws_frame_push, ZEND_ACC_PUBLIC)
+	PHP_ME(WsFrame, isReady, arginfo_ws_frame_is_ready, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
 };
 
@@ -94,9 +100,74 @@ PHP_METHOD(WsFrame, __toString) {
 }
 
 PHP_METHOD(WsFrame, push) {
+	char *buffer;
+	int buffer_len;
 
+	//get parameters
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &buffer, &buffer_len)) {
+		return;
+	}
+
+	//get object properties
+	long currentLength = Z_LVAL_P(zend_read_property(ws_frame_ce, getThis(), ZEND_STRS("currentLength")-1, 0 TSRMLS_CC));
+	long payloadLength = Z_LVAL_P(zend_read_property(ws_frame_ce, getThis(), ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC));
+	char *payloadData = Z_STRVAL_P(zend_read_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, 0 TSRMLS_CC));
+
+	//push data into payload
+	long need = payloadLength - currentLength;
+	long written = -1;
+
+	if(need > buffer_len) {
+		payloadData = strcat(payloadData, buffer);
+		currentLength += buffer_len;
+
+		written = buffer_len;
+	} else {
+		char *tmp = emalloc(need);
+		memcpy(tmp, buffer, need);
+		payloadData = strcat(payloadData, tmp);
+
+		efree(tmp);
+		currentLength = payloadLength;
+
+		written = need;
+	}
+
+	//update the object properties
+	zval *zCurrentLength;
+	MAKE_STD_ZVAL(zCurrentLength);
+	Z_TYPE_P(zCurrentLength) = IS_LONG;
+	Z_LVAL_P(zCurrentLength) = currentLength;
+
+	zval *zPayloadLength;
+	MAKE_STD_ZVAL(zPayloadLength);
+	Z_TYPE_P(zPayloadLength) = IS_LONG;
+	Z_LVAL_P(zPayloadLength) = payloadLength;
+
+	zval *zPayloadData;
+	MAKE_STD_ZVAL(zPayloadData);
+	Z_TYPE_P(zPayloadData) = IS_STRING;
+	Z_STRVAL_P(zPayloadData) = payloadData;
+	Z_STRLEN_P(zPayloadData) = currentLength;
+
+	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("currentLength")-1, zCurrentLength TSRMLS_CC);
+	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadLength")-1, zPayloadLength TSRMLS_CC);
+	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, zPayloadData TSRMLS_CC);
+
+	RETURN_LONG(written);
 }
 
 PHP_METHOD(WsFrame, encode) {
 
+}
+
+PHP_METHOD(WsFrame, isReady) {
+	zval *currentLength = zend_read_property(ws_frame_ce, getThis(), ZEND_STRS("currentLength")-1, 0 TSRMLS_CC);
+	zval *payloadLength = zend_read_property(ws_frame_ce, getThis(), ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC);
+
+	if(Z_LVAL_P(currentLength) == Z_LVAL_P(payloadLength)) {
+		RETURN_TRUE;
+	}
+
+	RETURN_FALSE;
 }

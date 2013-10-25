@@ -4,13 +4,8 @@
 #include "php.h"
 #include "php_main.h"
 
-/*struct ws_frame_object {
-    zend_object std;
-};*/
-
 struct _ws_frame_object {
     zend_object zo;
-    //CmsArray *cmsArray;
 };
 
 typedef struct _ws_frame_object ws_frame_object;
@@ -26,5 +21,7 @@ extern zend_object_handlers ws_frame_object_handlers;
 PHP_METHOD(WsFrame, __construct);
 PHP_METHOD(WsFrame, __toString);
 PHP_METHOD(WsFrame, push);
+PHP_METHOD(WsFrame, encode);
+PHP_METHOD(WsFrame, isReady);
 
 #endif

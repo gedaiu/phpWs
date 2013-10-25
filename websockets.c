@@ -53,7 +53,7 @@ PHP_MINIT_FUNCTION(websockets)
 
 	//payload
 	zend_declare_property_long(ws_frame_ce, ZEND_STRS("currentLength")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
-	zend_declare_property_long(ws_frame_ce, ZEND_STRS("payloadLength")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("payloadLength")-1, -1, ZEND_ACC_PUBLIC TSRMLS_CC);
 	zend_declare_property_string(ws_frame_ce, ZEND_STRS("payloadData")-1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	//frame header
@@ -181,7 +181,7 @@ PHP_FUNCTION(ws_handshake) {
 	* Since we are handling a WebSocket connection, not a standard HTTP
 	* connection, remove the HTTP input filter.
 	*/	
-	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));	
+	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
 
 	ap_filter_t *input_filter;
 
@@ -199,11 +199,9 @@ PHP_FUNCTION(ws_handshake) {
 	apr_table_clear(r->headers_out);
 	//apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
 
-
-
     //set the status
 	int responseNo = 101;
-    sapi_header_op(SAPI_HEADER_SET_STATUS, &responseNo TSRMLS_CC);
+    sapi_header_op(SAPI_HEADER_SET_STATUS, 101 TSRMLS_CC);
     
     //websocket headers
     sapi_header_line ctr = {0};
@@ -265,10 +263,15 @@ PHP_FUNCTION(ws_handshake) {
 					ap_remove_output_filter(out_filter);
 				}
 		}
-		
+
+		//create the default frame object
+		MAKE_STD_ZVAL(WS_G(zobj_wsFrame));
+		Z_TYPE_P(WS_G(zobj_wsFrame)) = IS_OBJECT;
+		object_init_ex(WS_G(zobj_wsFrame), ws_frame_ce);
+
 		RETURN_TRUE;
     }
-	
+
 	php_error_docref(NULL TSRMLS_CC, E_WARNING, "Missing 'Sec-WebSocket-Key' header. Can't handshake with the client.");
 
     RETURN_FALSE;
@@ -294,8 +297,6 @@ void ws_send_message(char* str, long len, int opcode) {
 	b |= RSV2 << 5;
 	b |= RSV3 << 4;
 	b |= ((opcode) & 0x0F);
-	
-	
 	
 	if(len <= 125) {
 		frame = emalloc(2);
@@ -475,9 +476,14 @@ PHP_FUNCTION(ws_receive) {
     apr_bucket_brigade *bb;
 	
 	int reading = 1;
+	zval *retval_ptr;
 
 	char *buffer = emalloc(2048);
 	apr_size_t bufsiz = 2048;
+
+	//create the zbuffer
+	zval *zbuffer;
+	MAKE_STD_ZVAL(zbuffer);
 
 	sapi_flush(TSRMLS_C);
 
@@ -498,13 +504,23 @@ PHP_FUNCTION(ws_receive) {
 
 	//decode frames
 	if(WS_G(bufferLen) > 0) {
-		res = parse_message(WS_G(buffer), WS_G(bufferLen));
-		
+		//create zval with the data
+
+		Z_TYPE_P(zbuffer) = IS_STRING;
+		Z_STRVAL_P(zbuffer) = WS_G(buffer);
+		Z_STRLEN_P(zbuffer) = WS_G(bufferLen);
+
+		//push in the global ws frame
+		zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "push",  strlen("push"),  &retval_ptr, 1, zbuffer, NULL TSRMLS_CC );
+
+		long len = Z_LVAL_P(retval_ptr);
+		zval_ptr_dtor(&retval_ptr);
+
 		//remove consumed data
-		/*if(WS_G(offset) > 0) {
-			if(WS_G(bufferLen) > WS_G(offset)) {
-				WS_G(bufferLen) -= WS_G(offset);
-				memmove(WS_G(buffer), WS_G(buffer)+WS_G(offset), WS_G(bufferLen));
+		if(len > 0) {
+			if(len < WS_G(bufferLen)) {
+				WS_G(bufferLen) -= len;
+				memmove(WS_G(buffer), WS_G(buffer)+len, WS_G(bufferLen));
 				WS_G(buffer) = erealloc(WS_G(buffer), WS_G(bufferLen));
 				
 			} else {
@@ -512,14 +528,19 @@ PHP_FUNCTION(ws_receive) {
 				WS_G(bufferLen) = 0;
 				WS_G(offset) = 0;
 			}
-		}*/
+		}
 	}
+
+	Z_TYPE_P(zbuffer) = IS_NULL;
+	zval_ptr_dtor(&zbuffer);
 
     apr_brigade_destroy(bb);
 
-	if(res == 1 && WS_G(len) > 0) {
-		RETURN_STRING( WS_G(payload),  WS_G(len));
-	}
+    zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "isReady",  strlen("isReady"),  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
+
+    if(Z_BVAL_P(retval_ptr)) {
+    	RETURN_ZVAL(WS_G(zobj_wsFrame), 1, 0);
+    }
 	
 	RETURN_FALSE;
 
