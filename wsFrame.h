@@ -23,5 +23,6 @@ PHP_METHOD(WsFrame, __toString);
 PHP_METHOD(WsFrame, push);
 PHP_METHOD(WsFrame, encode);
 PHP_METHOD(WsFrame, isReady);
+PHP_METHOD(WsFrame, reset);
 
 #endif

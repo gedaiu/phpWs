@@ -19,9 +19,44 @@ Apache2handler
 	$ make
 	$ make install
 
+## Classes
+
+### class WsFrame
+
+#### Properties
+	
+	
+	
+#### Methods
+
+	$ __construct()
+	Create the object and set the default values
+
+	$ string __toString()
+	Return the payloadData and if a mask is present the data will be decoded
+
+	$ long push(string)
+	Push data in the WsFrame
+	
+	if	
+	currentSize == -3 the FIN, RSV, opcode, payloadLength and haveMask will be filled
+	currentSize == -2 the payloadData will be set if the extended length bytes are present
+	currentSize == -1 the mask will be filled if masking bytes are present
+	currentSize >= 0 the payload data will be filled until it's full
+	
+	$ string encode()
+	Return the raw frame data	
+
+	$ bool isReady()
+	Return true if the frame the payload data is full (payloadLength == currentLength)
+
+
+	$ void reset()
+	Prepare the WsFrame to receive a new frame, empty payloadData and set all the properties to the default values.
+
 ## Functions
 
-	$ bool isWs(void);
+	$ bool is_ws(void);
 
 Check if the current conection is a websocket connection
 

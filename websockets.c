@@ -52,8 +52,8 @@ PHP_MINIT_FUNCTION(websockets)
 	ws_frame_object_handlers.clone_obj = NULL;
 
 	//payload
-	zend_declare_property_long(ws_frame_ce, ZEND_STRS("currentLength")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
-	zend_declare_property_long(ws_frame_ce, ZEND_STRS("payloadLength")-1, -1, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("currentLength")-1, -3, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("payloadLength")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
 	zend_declare_property_string(ws_frame_ce, ZEND_STRS("payloadData")-1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	//frame header
@@ -536,11 +536,11 @@ PHP_FUNCTION(ws_receive) {
 
     apr_brigade_destroy(bb);
 
-    zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "isReady",  strlen("isReady"),  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
+    //zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "isReady",  strlen("isReady"),  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
 
-    if(Z_BVAL_P(retval_ptr)) {
+    //if(Z_BVAL_P(retval_ptr)) {
     	RETURN_ZVAL(WS_G(zobj_wsFrame), 1, 0);
-    }
+    //}
 	
 	RETURN_FALSE;
 
