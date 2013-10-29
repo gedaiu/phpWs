@@ -155,6 +155,11 @@ PHP_METHOD(WsFrame, push) {
 
 	//get the payload length
 	if(currentLength == -2) {
+
+		if(payloadLength < 126) {
+			currentLength = -1;
+		}
+
 		if (payloadLength == 126 && offset + 2 < buffer_len) {
 			payloadLength = 0;
 			payloadLength = ((unsigned char)buffer[offset] << 8) + (unsigned char)buffer[offset + 1];
@@ -192,9 +197,8 @@ PHP_METHOD(WsFrame, push) {
 	}
 
 	//push data into payload
-	if(payloadLength >= 0) {
+	if(currentLength >= 0) {
 		long need = payloadLength - currentLength;
-
 
 		if(need > buffer_len - offset) {
 			payloadData = strcat(payloadData, buffer + offset);
@@ -228,13 +232,15 @@ PHP_METHOD(WsFrame, push) {
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadLength")-1, zPayloadLength TSRMLS_CC);
 	zval_ptr_dtor(&zPayloadLength);
 
-	zval *zPayloadData;
-	MAKE_STD_ZVAL(zPayloadData);
-	Z_TYPE_P(zPayloadData) = IS_STRING;
-	Z_STRVAL_P(zPayloadData) = payloadData;
-	Z_STRLEN_P(zPayloadData) = currentLength;
-	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, zPayloadData TSRMLS_CC);
-	zval_ptr_dtor(&zPayloadData);
+	if(currentLength >= 0) {
+		zval *zPayloadData;
+		MAKE_STD_ZVAL(zPayloadData);
+		Z_TYPE_P(zPayloadData) = IS_STRING;
+		Z_STRVAL_P(zPayloadData) = payloadData;
+		Z_STRLEN_P(zPayloadData) = currentLength;
+		zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, zPayloadData TSRMLS_CC);
+		zval_ptr_dtor(&zPayloadData);
+	}
 
 	zval *zFIN;
 	MAKE_STD_ZVAL(zFIN);
