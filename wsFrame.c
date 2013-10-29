@@ -107,6 +107,9 @@ PHP_METHOD(WsFrame, push) {
 	char *buffer;
 	int buffer_len;
 
+	int maskset = 0;
+	int i = 0;
+
 	//get parameters
 	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &buffer, &buffer_len)) {
 		return;
@@ -187,21 +190,40 @@ PHP_METHOD(WsFrame, push) {
 	}
 
 	//get the mask
-	if(currentLength == -1 && offset + 4 < buffer_len ) {
-		if(haveMask) {
+	if(currentLength == -1) {
+
+		if(haveMask && offset + 4 < buffer_len) {
 			memcpy(mask, buffer + offset, 4);
 			offset += 4;
-		}
+			currentLength = 0;
 
-		currentLength = 0;
+			zval *zMask;
+			MAKE_STD_ZVAL(zMask);
+			Z_TYPE_P(zMask) = IS_STRING;
+
+			Z_STRVAL_P(zMask) = mask;
+			Z_STRLEN_P(zMask) = 4;
+
+			zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("mask")-1, zMask TSRMLS_CC);
+
+		} else if(!haveMask) {
+			currentLength = 0;
+		}
 	}
 
 	//push data into payload
-	if(currentLength >= 0) {
+	if(currentLength >= 0 && currentLength < payloadLength) {
 		long need = payloadLength - currentLength;
 
 		if(need > buffer_len - offset) {
 			payloadData = strcat(payloadData, buffer + offset);
+
+			if(haveMask) {
+				for(i = currentLength; i < currentLength + (buffer_len - offset); i++) {
+					payloadData[i] = payloadData[i] ^ mask[i % 4];
+				}
+			}
+
 			currentLength += buffer_len - offset;
 
 			written = buffer_len;
@@ -209,6 +231,12 @@ PHP_METHOD(WsFrame, push) {
 			char *tmp = emalloc(need);
 			memcpy(tmp, buffer + offset, need);
 			payloadData = strcat(payloadData, tmp);
+
+			if(haveMask) {
+				for(i = currentLength; i < payloadLength; i++) {
+					payloadData[i] = payloadData[i] ^ mask[i % 4];
+				}
+			}
 
 			efree(tmp);
 			currentLength = payloadLength;
@@ -223,23 +251,20 @@ PHP_METHOD(WsFrame, push) {
 	Z_TYPE_P(zCurrentLength) = IS_LONG;
 	Z_LVAL_P(zCurrentLength) = currentLength;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("currentLength")-1, zCurrentLength TSRMLS_CC);
-	zval_ptr_dtor(&zCurrentLength);
 
 	zval *zPayloadLength;
 	MAKE_STD_ZVAL(zPayloadLength);
 	Z_TYPE_P(zPayloadLength) = IS_LONG;
 	Z_LVAL_P(zPayloadLength) = payloadLength;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadLength")-1, zPayloadLength TSRMLS_CC);
-	zval_ptr_dtor(&zPayloadLength);
 
-	if(currentLength >= 0) {
+	if(currentLength > 0 && payloadLength > 0) {
 		zval *zPayloadData;
 		MAKE_STD_ZVAL(zPayloadData);
 		Z_TYPE_P(zPayloadData) = IS_STRING;
 		Z_STRVAL_P(zPayloadData) = payloadData;
 		Z_STRLEN_P(zPayloadData) = currentLength;
 		zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, zPayloadData TSRMLS_CC);
-		zval_ptr_dtor(&zPayloadData);
 	}
 
 	zval *zFIN;
@@ -247,59 +272,38 @@ PHP_METHOD(WsFrame, push) {
 	Z_TYPE_P(zFIN) = IS_BOOL;
 	Z_LVAL_P(zFIN) = FIN;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("FIN")-1, zFIN TSRMLS_CC);
-	zval_ptr_dtor(&zFIN);
 
 	zval *zRSV1;
 	MAKE_STD_ZVAL(zRSV1);
 	Z_TYPE_P(zRSV1) = IS_LONG;
 	Z_LVAL_P(zRSV1) = RSV1;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("RSV1")-1, zRSV1 TSRMLS_CC);
-	zval_ptr_dtor(&zRSV1);
 
 	zval *zRSV2;
 	MAKE_STD_ZVAL(zRSV2);
 	Z_TYPE_P(zRSV2) = IS_LONG;
 	Z_LVAL_P(zRSV2) = RSV1;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("RSV2")-1, zRSV2 TSRMLS_CC);
-	zval_ptr_dtor(&zRSV2);
 
 	zval *zRSV3;
 	MAKE_STD_ZVAL(zRSV3);
 	Z_TYPE_P(zRSV3) = IS_LONG;
 	Z_LVAL_P(zRSV3) = RSV1;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("RSV3")-1, zRSV3 TSRMLS_CC);
-	zval_ptr_dtor(&zRSV3);
 
 	zval *zOpcode;
 	MAKE_STD_ZVAL(zOpcode);
 	Z_TYPE_P(zOpcode) = IS_LONG;
 	Z_LVAL_P(zOpcode) = opcode;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("opcode")-1, zOpcode TSRMLS_CC);
-	zval_ptr_dtor(&zOpcode);
 
 	zval *zHaveMask;
 	MAKE_STD_ZVAL(zHaveMask);
 	Z_TYPE_P(zHaveMask) = IS_BOOL;
 	Z_LVAL_P(zHaveMask) = haveMask;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("haveMask")-1, zHaveMask TSRMLS_CC);
-	zval_ptr_dtor(&zHaveMask);
 
-	zval *zMask;
-	MAKE_STD_ZVAL(zMask);
-	Z_TYPE_P(zMask) = IS_STRING;
-
-	if(haveMask) {
-		Z_STRVAL_P(zMask) = mask;
-		Z_STRLEN_P(zMask) = 4;
-	} else {
-		Z_STRVAL_P(zMask) = "";
-		Z_STRLEN_P(zMask) = 0;
-	}
-
-	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("mask")-1, zMask TSRMLS_CC);
-	zval_ptr_dtor(&zMask);
-
-	RETURN_LONG(written);
+	RETURN_LONG(offset + written);
 }
 
 PHP_METHOD(WsFrame, encode) {
@@ -324,70 +328,56 @@ PHP_METHOD(WsFrame, reset) {
 	Z_TYPE_P(zCurrentLength) = IS_LONG;
 	Z_LVAL_P(zCurrentLength) = -3;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("currentLength")-1, zCurrentLength TSRMLS_CC);
-	zval_ptr_dtor(&zCurrentLength);
 
 	zval *zPayloadLength;
 	MAKE_STD_ZVAL(zPayloadLength);
 	Z_TYPE_P(zPayloadLength) = IS_LONG;
 	Z_LVAL_P(zPayloadLength) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadLength")-1, zPayloadLength TSRMLS_CC);
-	zval_ptr_dtor(&zPayloadLength);
 
 	zval *zPayloadData;
 	MAKE_STD_ZVAL(zPayloadData);
-	Z_TYPE_P(zPayloadData) = IS_STRING;
-	Z_STRVAL_P(zPayloadData) = "";
-	Z_STRLEN_P(zPayloadData) = 0;
+	ZVAL_EMPTY_STRING(zPayloadData);
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, zPayloadData TSRMLS_CC);
-	zval_ptr_dtor(&zPayloadData);
 
 	zval *zFIN;
 	MAKE_STD_ZVAL(zFIN);
 	Z_TYPE_P(zFIN) = IS_BOOL;
 	Z_LVAL_P(zFIN) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("FIN")-1, zFIN TSRMLS_CC);
-	zval_ptr_dtor(&zFIN);
 
 	zval *zRSV1;
 	MAKE_STD_ZVAL(zRSV1);
 	Z_TYPE_P(zRSV1) = IS_LONG;
 	Z_LVAL_P(zRSV1) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("RSV1")-1, zRSV1 TSRMLS_CC);
-	zval_ptr_dtor(&zRSV1);
 
 	zval *zRSV2;
 	MAKE_STD_ZVAL(zRSV2);
 	Z_TYPE_P(zRSV2) = IS_LONG;
 	Z_LVAL_P(zRSV2) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("RSV2")-1, zRSV2 TSRMLS_CC);
-	zval_ptr_dtor(&zRSV2);
 
 	zval *zRSV3;
 	MAKE_STD_ZVAL(zRSV3);
 	Z_TYPE_P(zRSV3) = IS_LONG;
 	Z_LVAL_P(zRSV3) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("RSV3")-1, zRSV3 TSRMLS_CC);
-	zval_ptr_dtor(&zRSV3);
 
 	zval *zOpcode;
 	MAKE_STD_ZVAL(zOpcode);
 	Z_TYPE_P(zOpcode) = IS_LONG;
 	Z_LVAL_P(zOpcode) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("opcode")-1, zOpcode TSRMLS_CC);
-	zval_ptr_dtor(&zOpcode);
 
 	zval *zHaveMask;
 	MAKE_STD_ZVAL(zHaveMask);
 	Z_TYPE_P(zHaveMask) = IS_BOOL;
 	Z_LVAL_P(zHaveMask) = 0;
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("haveMask")-1, zHaveMask TSRMLS_CC);
-	zval_ptr_dtor(&zHaveMask);
 
 	zval *zMask;
 	MAKE_STD_ZVAL(zMask);
-	Z_TYPE_P(zMask) = IS_STRING;
-	Z_STRVAL_P(zMask) = "";
-	Z_STRLEN_P(zMask) = 0;
+	ZVAL_EMPTY_STRING(zMask);
 	zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("mask")-1, zMask TSRMLS_CC);
-	zval_ptr_dtor(&zMask);
 }
