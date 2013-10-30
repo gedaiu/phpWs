@@ -488,50 +488,6 @@ int parse_message(char *buffer, long blen) {
 
 PHP_FUNCTION(ws_receive) {
 
-	
-/*
-	//decode frames
-	if(WS_G(bufferLen) > 0) {
-		//create zval with the data
-
-		Z_TYPE_P(zbuffer) = IS_STRING;
-		Z_STRVAL_P(zbuffer) = WS_G(buffer);
-		Z_STRLEN_P(zbuffer) = WS_G(bufferLen);
-
-		//push in the global ws frame
-		//zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "push",  strlen("push"),  &retval_ptr, 1, zbuffer, NULL TSRMLS_CC );
-
-		long len = Z_LVAL_P(retval_ptr);
-		zval_ptr_dtor(&retval_ptr);
-
-		//remove consumed data
-		if(len > 0) {
-			if(len < WS_G(bufferLen)) {
-				WS_G(bufferLen) -= len;
-				memmove(WS_G(buffer), WS_G(buffer)+len, WS_G(bufferLen));
-				WS_G(buffer) = erealloc(WS_G(buffer), WS_G(bufferLen));
-				
-			} else {
-				WS_G(buffer) = erealloc(WS_G(buffer), 20);
-				WS_G(bufferLen) = 0;
-				WS_G(offset) = 0;
-			}
-		}
-	}
-
-	Z_TYPE_P(zbuffer) = IS_NULL;
-	zval_ptr_dtor(&zbuffer);
-
-    apr_brigade_destroy(bb);
-
-    //zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "isReady",  strlen("isReady"),  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
-
-    //if(Z_BVAL_P(retval_ptr)) {
-    //	zend_objects_store_add_ref(WS_G(zobj_wsFrame));
-    //	RETURN_ZVAL(WS_G(zobj_wsFrame), 1, 0);
-    //}
-	
-	RETURN_FALSE;*/
 }
 
 PHP_FUNCTION(ws_close) {
