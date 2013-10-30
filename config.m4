@@ -10,5 +10,5 @@ if test "$PHP_WEBSOCKETS" = "yes"; then
 	PHP_ADD_INCLUDE(/usr/include/httpd)
 	PHP_ADD_INCLUDE(/usr/include/apr-1)
 
-	PHP_NEW_EXTENSION(websockets, websockets.c wsFrame.c, $ext_shared)
+	PHP_NEW_EXTENSION(websockets, websockets.c wsFrame.c wsServer.c, $ext_shared)
 fi

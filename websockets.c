@@ -39,6 +39,9 @@ static zend_function_entry websockets_functions[] = {
 zend_object_handlers ws_frame_object_handlers;
 zend_class_entry *ws_frame_ce;
 
+zend_object_handlers ws_server_object_handlers;
+zend_class_entry *ws_server_ce;
+
 PHP_MINIT_FUNCTION(websockets)
 {
 	zend_class_entry ce;
@@ -67,11 +70,30 @@ PHP_MINIT_FUNCTION(websockets)
 	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("haveMask")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
 	zend_declare_property_string(ws_frame_ce, ZEND_STRS("mask")-1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
 
+
+	//initialize wsServer class
+	INIT_CLASS_ENTRY(ce, "WsServer", ws_server_methods);
+	ws_server_ce = zend_register_internal_class(&ce TSRMLS_CC);
+	ws_server_ce->create_object = ws_server_create_handler;
+
+	memcpy(&ws_server_object_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+	ws_server_object_handlers.clone_obj = NULL;
+
+	//init frame property
+	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("readInBlockingMode")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+
+	zend_declare_property_long(ws_frame_ce, ZEND_STRS("readInterval") - 1, 1000, ZEND_ACC_PUBLIC TSRMLS_CC);
+
+	zend_declare_property_null(ws_server_ce, ZEND_STRS("readFrame") - 1, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_string(ws_server_ce, ZEND_STRS("readBuffer") - 1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
+
+	zend_declare_property_null(ws_server_ce, ZEND_STRS("_onMessage") - 1, ZEND_ACC_PROTECTED TSRMLS_CC);
+
 	return SUCCESS;
 }
 
 PHP_RINIT_FUNCTION(websockets_request) {
-	
+
 	return SUCCESS;
 }
 
@@ -263,11 +285,6 @@ PHP_FUNCTION(ws_handshake) {
 					ap_remove_output_filter(out_filter);
 				}
 		}
-
-		//create the default frame object
-		MAKE_STD_ZVAL(WS_G(zobj_wsFrame));
-		Z_TYPE_P(WS_G(zobj_wsFrame)) = IS_OBJECT;
-		object_init_ex(WS_G(zobj_wsFrame), ws_frame_ce);
 
 		RETURN_TRUE;
     }
@@ -470,38 +487,9 @@ int parse_message(char *buffer, long blen) {
 }
 
 PHP_FUNCTION(ws_receive) {
-	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
+
 	
-	apr_status_t rv;
-    apr_bucket_brigade *bb;
-	
-	int reading = 1;
-	zval *retval_ptr;
-
-	char *buffer = emalloc(2048);
-	apr_size_t bufsiz = 2048;
-
-	//create the zbuffer
-	zval *zbuffer;
-	MAKE_STD_ZVAL(zbuffer);
-
-	sapi_flush(TSRMLS_C);
-
-	int res = 0;
-	
-	bb = apr_brigade_create(WS_G(pool), WS_G(bucket_alloc));
-
-	if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_NONBLOCK_READ, bufsiz)) == APR_SUCCESS) {
-		if ((rv = apr_brigade_flatten(bb, buffer, &bufsiz)) == APR_SUCCESS) {
-			if(bufsiz > 0) {
-				WS_G(buffer) = erealloc(WS_G(buffer), WS_G(bufferLen) + bufsiz);
-				memcpy(WS_G(buffer) + WS_G(bufferLen), buffer, bufsiz);
-				WS_G(bufferLen) += bufsiz;
-				efree(buffer);
-			}
-	    }
-	}
-
+/*
 	//decode frames
 	if(WS_G(bufferLen) > 0) {
 		//create zval with the data
@@ -511,7 +499,7 @@ PHP_FUNCTION(ws_receive) {
 		Z_STRLEN_P(zbuffer) = WS_G(bufferLen);
 
 		//push in the global ws frame
-		zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "push",  strlen("push"),  &retval_ptr, 1, zbuffer, NULL TSRMLS_CC );
+		//zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "push",  strlen("push"),  &retval_ptr, 1, zbuffer, NULL TSRMLS_CC );
 
 		long len = Z_LVAL_P(retval_ptr);
 		zval_ptr_dtor(&retval_ptr);
@@ -539,11 +527,11 @@ PHP_FUNCTION(ws_receive) {
     //zend_call_method( &WS_G(zobj_wsFrame), ws_frame_ce, NULL, "isReady",  strlen("isReady"),  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
 
     //if(Z_BVAL_P(retval_ptr)) {
-    	RETURN_ZVAL(WS_G(zobj_wsFrame), 1, 0);
+    //	zend_objects_store_add_ref(WS_G(zobj_wsFrame));
+    //	RETURN_ZVAL(WS_G(zobj_wsFrame), 1, 0);
     //}
 	
-	RETURN_FALSE;
-
+	RETURN_FALSE;*/
 }
 
 PHP_FUNCTION(ws_close) {

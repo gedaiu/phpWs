@@ -20,6 +20,7 @@
 
 //extension classes
 #include "wsFrame.h"
+#include "wsServer.h"
 
 #ifdef TM_IN_SYS_TIME
 	#include <sys/time.h>
@@ -72,8 +73,8 @@ ZEND_END_MODULE_GLOBALS(websockets)
 #define WS_G(v) (websockets_globals.v)
 #endif
 
-
 extern zend_class_entry *ws_frame_ce;
+extern zend_class_entry *ws_server_ce;
 
 
 #define http_got_server_var(v) (NULL != http_get_server_var_ex((v), strlen(v), 1))

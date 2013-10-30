@@ -86,9 +86,9 @@ zend_object_value ws_frame_create_handler(zend_class_entry *ce TSRMLS_DC) {
 zend_function_entry ws_frame_methods[] = {
 	PHP_ME(WsFrame,  __construct, arginfo_ws_frame___construct, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
 
-	PHP_ME(WsFrame, __toString, arginfo_ws_frame___toString, ZEND_ACC_PUBLIC)
+	PHP_ME(WsFrame, __toString, arginfo_ws_frame___toString, ZEND_ACC_CTOR | ZEND_ACC_PUBLIC)
 	PHP_ME(WsFrame, push, arginfo_ws_frame_push, ZEND_ACC_PUBLIC)
-	PHP_ME(WsFrame, encode, arginfo_ws_frame_push, ZEND_ACC_PUBLIC)
+	PHP_ME(WsFrame, encode, arginfo_ws_frame_encode, ZEND_ACC_PUBLIC)
 	PHP_ME(WsFrame, isReady, arginfo_ws_frame_is_ready, ZEND_ACC_PUBLIC)
 	PHP_ME(WsFrame, reset, arginfo_ws_frame_is_ready, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
