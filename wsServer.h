@@ -7,6 +7,7 @@
 #include "httpd.h"
 #include "php_apache_http.h"
 #include "php_apache.h"
+#include "ext/standard/php_smart_str.h"
 #include "SAPI.h"
 
 struct _ws_server_object {
@@ -26,6 +27,8 @@ extern zend_object_handlers ws_server_object_handlers;
 PHP_METHOD(WsServer, __construct);
 PHP_METHOD(WsServer, receive);
 PHP_METHOD(WsServer, processRawData);
+
+PHP_METHOD(WsServer, serve);
 
 PHP_METHOD(WsServer, callback);
 

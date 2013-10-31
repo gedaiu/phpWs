@@ -80,9 +80,10 @@ PHP_MINIT_FUNCTION(websockets)
 	ws_server_object_handlers.clone_obj = NULL;
 
 	//init frame property
-	zend_declare_property_bool(ws_frame_ce, ZEND_STRS("readInBlockingMode")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_bool(ws_server_ce, ZEND_STRS("readInBlockingMode")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
 
-	zend_declare_property_long(ws_frame_ce, ZEND_STRS("readInterval") - 1, 1000, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_long(ws_server_ce, ZEND_STRS("readInterval") - 1, 1000, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_bool(ws_server_ce, ZEND_STRS("serving") - 1, 1, ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	zend_declare_property_null(ws_server_ce, ZEND_STRS("readFrame") - 1, ZEND_ACC_PUBLIC TSRMLS_CC);
 	zend_declare_property_string(ws_server_ce, ZEND_STRS("readBuffer") - 1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
@@ -362,8 +363,6 @@ void ws_send_message(char* str, long len, int opcode) {
 
 	ap_fwrite(of, WS_G(obb), str, strlen(str));
    	ap_fflush(of, WS_G(obb));
-	
-	efree(frame);
 }
 
 PHP_FUNCTION(ws_send) {

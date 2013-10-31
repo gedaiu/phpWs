@@ -39,6 +39,9 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_processRawData, 0, 0, 1)
 	ZEND_ARG_INFO(0, string)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_serve, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_callback, 0, 0, 1)
 	ZEND_ARG_INFO(0, function)
 ZEND_END_ARG_INFO()
@@ -96,6 +99,7 @@ zend_function_entry ws_server_methods[] = {
 
 	PHP_ME(WsServer, receive, arginfo_ws_server_receive, ZEND_ACC_PUBLIC)
 	PHP_ME(WsServer, processRawData, arginfo_ws_server_processRawData, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, serve, arginfo_ws_server_serve, ZEND_ACC_PUBLIC)
 
 	PHP_ME(WsServer, callback, arginfo_ws_server_callback, ZEND_ACC_PRIVATE)
 
@@ -135,16 +139,22 @@ PHP_METHOD(WsServer, receive) {
 
 	ZVAL_EMPTY_STRING(return_value);
 
-	//APR_NONBLOCK_READ
-	if((rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_NONBLOCK_READ, bufsiz)) == APR_SUCCESS) {
+	zval *zReadInBlockingMode = zend_read_property(ws_server_ce, getThis(), ZEND_STRS("readInBlockingMode")-1, 0 TSRMLS_CC);
+
+	if(Z_BVAL_P(zReadInBlockingMode)) {
+		rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, bufsiz);
+	} else {
+		rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_NONBLOCK_READ, bufsiz);
+	}
+
+	if(rv == APR_SUCCESS) {
 		if ((rv = apr_brigade_flatten(bb, buffer, &bufsiz)) == APR_SUCCESS) {
 			if(bufsiz > 0) {
-				Z_STRVAL_P(return_value) = buffer;
-				Z_STRLEN_P(return_value) = bufsiz;
+				ZVAL_STRINGL(return_value, buffer, bufsiz, 1);
 			}
 		}
 	}
-
+	
 	apr_brigade_destroy(bb);
 	apr_bucket_alloc_destroy(bucket_alloc);
 	apr_pool_destroy(pool);
@@ -160,10 +170,17 @@ PHP_METHOD(WsServer, processRawData) {
 		return;
 	}
 
-	zval *data = zend_read_property(ws_server_ce, getThis(), ZEND_STRS("readBuffer")-1, 0 TSRMLS_CC);
-	data->value.str.val = strcat(data->value.str.val, zBuffer->value.str.val);
-	data->value.str.len += zBuffer->value.str.len;
-	zend_update_property(ws_server_ce, getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
+	zval *data = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, 0 TSRMLS_CC);
+
+	if(Z_STRLEN_P(data) == 0) {
+	} else {
+		ZVAL_STRINGL(data, strcat(Z_STRVAL_P(data), Z_STRVAL_P(zBuffer)), Z_STRLEN_P(data) + Z_STRLEN_P(zBuffer), 1);
+	}
+
+	//
+	//
+
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
 
 	//TODO: CALL ON BEFORE PROCESS
 
@@ -174,9 +191,13 @@ PHP_METHOD(WsServer, processRawData) {
 	zend_call_method( &readFrame, ws_frame_ce, NULL, "push",  strlen("push"),  &retval_ptr, 1, data, NULL TSRMLS_CC );
 	long readBytes = Z_LVAL_P(retval_ptr);
 
+	if(readBytes == -1) {
+		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 0 TSRMLS_CC);
+	}
+
 	if(readBytes > 0) {
 		char *buffer = Z_STRVAL_P(data);
-		char *buffer_len = Z_STRLEN_P(data);
+		long buffer_len = (long)Z_STRLEN_P(data);
 
 		//remove data from buffer
 		if(readBytes < buffer_len) {
@@ -184,13 +205,8 @@ PHP_METHOD(WsServer, processRawData) {
 			memmove(buffer, buffer + readBytes, data->value.str.len);
 			data->value.str.val = erealloc(data->value.str.val, data->value.str.len);
 
-			Z_STRVAL_P(data) = buffer;
-			Z_STRLEN_P(data) = buffer_len;
-
+			ZVAL_STRINGL(data, buffer, buffer_len, 0);
 		} else {
-			buffer = "";//erealloc(buffer, 0);
-			buffer_len = 0;
-
 			ZVAL_EMPTY_STRING(data);
 		}
 
@@ -205,10 +221,9 @@ PHP_METHOD(WsServer, processRawData) {
 		zend_call_method( &readFrame, ws_frame_ce, NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
 	}
 
-
 	//TODO: CALL ON AFTER PROCESS
-
-	RETURN_FALSE;
+	
+	RETURN_TRUE;
 }
 
 
@@ -245,7 +260,6 @@ PHP_METHOD(WsServer, setOnMessage) {
 	zend_update_property(ws_server_ce, getThis(), ZEND_STRS("_onMessage")-1, zCall TSRMLS_CC);
 }
 
-
 PHP_METHOD(WsServer, callback) {
 	zval *params, *retval_ptr = NULL;
 	zend_fcall_info fci;
@@ -262,5 +276,29 @@ PHP_METHOD(WsServer, callback) {
 	}
 
 	zend_fcall_info_args_clear(&fci, 1);
+}
+
+PHP_METHOD(WsServer, serve) {
+	//zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 1 TSRMLS_CC);
+
+	int serving = 1;
+
+	while(serving) {
+		zval *retval_ptr;
+		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "receive", sizeof("receive")-1, &retval_ptr, 0, NULL, NULL TSRMLS_CC );
+
+		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "processrawdata", sizeof("processrawdata")-1,  NULL, 1, retval_ptr, NULL TSRMLS_CC );
+
+
+		zval *zReadInBlockingMode = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readInBlockingMode")-1, 0 TSRMLS_CC);
+		zval *zReadInterval = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readInterval")-1, 0 TSRMLS_CC);
+		zval *zServing = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 0 TSRMLS_CC);
+
+		serving = Z_BVAL_P(zServing);
+
+		if(!Z_BVAL_P(zReadInBlockingMode)) {
+			usleep(Z_LVAL_P(zReadInterval));
+		}
+	}
 }
 

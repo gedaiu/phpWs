@@ -71,7 +71,6 @@ zend_object_value ws_frame_create_handler(zend_class_entry *ce TSRMLS_DC) {
 		object_properties_init((zend_object*) intern, ce);
 	#endif
 
-
 	retval.handle = zend_objects_store_put(
 			intern,
 			(zend_objects_store_dtor_t) zend_objects_destroy_object,
@@ -100,7 +99,9 @@ PHP_METHOD(WsFrame, __construct) {
 }
 
 PHP_METHOD(WsFrame, __toString) {
-	RETURN_STRING( "test",  4);
+	zval *payload = zend_read_property(ws_frame_ce, getThis(), ZEND_STRS("payloadData")-1, 0 TSRMLS_CC);
+
+	RETURN_STRINGL( Z_STRVAL_P(payload), Z_STRLEN_P(payload), 1);
 }
 
 PHP_METHOD(WsFrame, push) {
@@ -147,7 +148,7 @@ PHP_METHOD(WsFrame, push) {
 		haveMask = (buffer[1] >> 7) & 1;
 		payloadLength = buffer[1] & 0x7f;
 
-		if(opcode <= 10) {
+		if(opcode > 0 && opcode <= 10) {
 			currentLength = -2;
 			offset += 2;
 		} else {
@@ -191,7 +192,6 @@ PHP_METHOD(WsFrame, push) {
 
 	//get the mask
 	if(currentLength == -1) {
-
 		if(haveMask && offset + 4 < buffer_len) {
 			memcpy(mask, buffer + offset, 4);
 			offset += 4;
@@ -205,7 +205,6 @@ PHP_METHOD(WsFrame, push) {
 			Z_STRLEN_P(zMask) = 4;
 
 			zend_update_property(ws_frame_ce, getThis(), ZEND_STRS("mask")-1, zMask TSRMLS_CC);
-
 		} else if(!haveMask) {
 			currentLength = 0;
 		}
