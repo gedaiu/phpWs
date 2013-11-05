@@ -36,7 +36,6 @@
 PHP_FUNCTION(is_ws);
 PHP_FUNCTION(ws_handshake);
 PHP_FUNCTION(ws_send);
-PHP_FUNCTION(ws_receive);
 PHP_FUNCTION(ws_close);
 
 extern zend_module_entry websockets_module_entry;

@@ -23,6 +23,8 @@
 
 #include "wsFrame.h"
 
+#define FRAME_SET_LENGTH(X64, IDX)  (unsigned char)(((X64) >> ((IDX)*8)) & 0xFF)
+
 extern zend_object_handlers ws_frame_object_handlers;
 extern zend_class_entry *ws_frame_ce;
 
@@ -101,8 +103,7 @@ PHP_METHOD(WsFrame, __construct) {
 PHP_METHOD(WsFrame, __toString) {
 	zval *payload = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("payloadData")-1, 0 TSRMLS_CC);
 
-	//RETURN_STRINGL( Z_STRVAL_P(payload), Z_STRLEN_P(payload), 1);
-	RETURN_STRINGL( "test", 4, 1);
+	RETURN_STRINGL( Z_STRVAL_P(payload), Z_STRLEN_P(payload), 1);
 }
 
 PHP_METHOD(WsFrame, push) {
@@ -273,7 +274,123 @@ PHP_METHOD(WsFrame, push) {
 }
 
 PHP_METHOD(WsFrame, encode) {
+	char *frame;
 
+	//get object properties
+	long currentLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("currentLength")-1, 0 TSRMLS_CC));
+	long payloadLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC));
+	char *payloadData = Z_STRVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("payloadData")-1, 0 TSRMLS_CC));
+	long payloadDataLen = Z_STRLEN_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("payloadData")-1, 0 TSRMLS_CC));
+
+	int FIN = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("FIN")-1, 0 TSRMLS_CC));
+	int RSV1 = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("RSV1")-1, 0 TSRMLS_CC));
+	int RSV2 = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("RSV2")-1, 0 TSRMLS_CC));
+	int RSV3 = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("RSV3")-1, 0 TSRMLS_CC));
+
+	int opcode = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("opcode")-1, 0 TSRMLS_CC));
+
+	int haveMask = Z_BVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("haveMask")-1, 0 TSRMLS_CC));
+	char *mask = Z_STRVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("mask")-1, 0 TSRMLS_CC));
+	char *maskLen = Z_STRLEN_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("mask")-1, 0 TSRMLS_CC));
+
+	if(payloadLength != currentLength) {
+		php_error_docref(NULL TSRMLS_CC, E_NOTICE, "payloadLength is not equal with currentLength. Do you have an incomplete frame?");
+		RETURN_FALSE;
+	}
+
+	if(payloadLength != payloadDataLen) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Incomplete payloadData. The length of payloadData property must be equal with payloadLength.");
+		RETURN_FALSE;
+	}
+
+	if(haveMask && maskLen != 4) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid mask size (%i).", maskLen);
+		RETURN_FALSE;
+	}
+
+	if(opcode <= 0 || opcode > 10) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid opcode `%i`", opcode);
+		RETURN_FALSE(-1);
+	}
+
+	//calculate frame size
+	int frameLen = 0;
+	if(payloadLength <= 125) {
+		frameLen = 2;
+	} else if (payloadLength <= 255 * 255 - 1) {
+		frameLen = 4;
+	} else {
+		frameLen = 10;
+	}
+
+	if(haveMask) {
+		frameLen += 4;
+	}
+
+	frameLen += payloadLength;
+	frame = emalloc(frameLen);
+
+	//put data in frame
+
+	int offset = 0;
+
+	char b = opcode;
+	b |= FIN << 7;
+	b |= RSV1 << 6;
+	b |= RSV2 << 5;
+	b |= RSV3 << 4;
+	b |= ((opcode) & 0x0F);
+
+	if(payloadLength <= 125) {
+		offset = 2;
+
+		frame[0] = b;
+
+		b = (char) payloadLength; //set the message length
+		b |= (haveMask << 7); //set off the mask
+
+		frame[1] = b;
+	} else if (payloadLength <= 255 * 255 - 1) {
+		offset = 4;
+		frame[0] = b;
+
+		b = 126;
+		b |= (haveMask << 7); //set off the mask
+		frame[1] = b;
+		frame[2] = FRAME_SET_LENGTH(payloadLength, 1);
+		frame[3] = FRAME_SET_LENGTH(payloadLength, 0);
+	} else {
+		offset = 10;
+		frame[0] = b;
+
+		b = 127;
+		b |= (haveMask << 7); //set off the mask
+		frame[1] = b;
+		frame[2] = FRAME_SET_LENGTH(payloadLength, 7);
+		frame[3] = FRAME_SET_LENGTH(payloadLength, 6);
+		frame[4] = FRAME_SET_LENGTH(payloadLength, 5);
+		frame[5] = FRAME_SET_LENGTH(payloadLength, 4);
+		frame[6] = FRAME_SET_LENGTH(payloadLength, 3);
+		frame[7] = FRAME_SET_LENGTH(payloadLength, 2);
+		frame[8] = FRAME_SET_LENGTH(payloadLength, 1);
+		frame[9] = FRAME_SET_LENGTH(payloadLength, 0);
+	}
+
+	//mask payload
+	if(haveMask) {
+		memcpy(frame + offset, mask, 4);
+
+		offset += 4;
+
+		long i;
+		for(i = 0; i < payloadLength; i++) {
+			frame[i + offset] = payloadData[i] ^ mask[i % 4];
+		}
+	} else {
+		memcpy(frame + offset, payloadData, payloadLength);
+	}
+
+	RETURN_STRINGL(frame, frameLen, 0);
 }
 
 PHP_METHOD(WsFrame, isReady) {

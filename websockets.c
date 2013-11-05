@@ -30,7 +30,6 @@ static zend_function_entry websockets_functions[] = {
     PHP_FE(is_ws, NULL)
     PHP_FE(ws_handshake, NULL)
     PHP_FE(ws_send, NULL)
-    PHP_FE(ws_receive, NULL)
     PHP_FE(ws_close, NULL)
     {NULL, NULL, NULL}
 }; 
@@ -195,15 +194,9 @@ PHP_FUNCTION(is_ws)
 
 PHP_FUNCTION(ws_handshake) {
 
-	WS_G(offset) = 0;
-	WS_G(pos) = 0;
-	WS_G(buffer) = emalloc(20);
-	WS_G(bufferLen) = 0;
+	//Since we are handling a WebSocket connection, not a standard HTTP
+	//connection, remove the HTTP input filter.
 
-	/*
-	* Since we are handling a WebSocket connection, not a standard HTTP
-	* connection, remove the HTTP input filter.
-	*/	
 	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
 
 	ap_filter_t *input_filter;
@@ -336,7 +329,7 @@ void ws_send_message(char* str, long len, int opcode) {
 		frame[2] = FRAME_SET_LENGTH(len, 1);
         frame[3] = FRAME_SET_LENGTH(len, 0);
 	} else {
-		frame = emalloc(10);	
+		frame = emalloc(10);
 		frameLen = 10;
 		frame[0] = b;
 
@@ -354,139 +347,36 @@ void ws_send_message(char* str, long len, int opcode) {
 	}
 
 	PHPWRITE(frame, frameLen);
+	PHPWRITE(str, strlen(str));
 	sapi_flush(TSRMLS_C);
-
-	//send data
-	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
-
-	ap_filter_t *of = r->connection->output_filters;
-
-	ap_fwrite(of, WS_G(obb), str, strlen(str));
-   	ap_fflush(of, WS_G(obb));
 }
 
 PHP_FUNCTION(ws_send) {
-	char *str; 
-	int str_len;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &str, &str_len) == FAILURE) {
+	zval *msg;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &msg) == FAILURE) {
 		return;
 	}
 
-	ws_send_message(str, str_len, 1);
+    //send message as string
+    if(Z_TYPE_P(msg) == IS_STRING) {
+		ws_send_message(Z_STRVAL_P(msg), Z_STRLEN_P(msg), 1);
+		RETURN_TRUE;
+	}
+
+    //encode object and send it
+    if(Z_TYPE_P(msg) == IS_OBJECT) {
+    	zval *retval_ptr;
+    	zend_call_method( &msg, Z_OBJCE_P(msg), NULL, "encode", sizeof("encode")-1,  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
+
+    	PHPWRITE(Z_STRVAL_P(retval_ptr), Z_STRLEN_P(retval_ptr));
+    	sapi_flush(TSRMLS_C);
+
+    	RETURN_TRUE;
+	}
 
     RETURN_FALSE;
-}
-
-int parse_message(char *buffer, long blen) {
-
-	//read header
-	if(WS_G(step) == 0 && WS_G(offset) + 2 < blen) {
-		WS_G(FIN) = (buffer[WS_G(offset)] >> 7) & 1;
-		WS_G(RSV1) = (buffer[WS_G(offset)] >> 6) & 1;
-		WS_G(RSV2) =(buffer[WS_G(offset)] >> 5) & 1;
-		WS_G(RSV3) =(buffer[WS_G(offset)] >> 4) & 1;
-	
-		WS_G(opcode) = (buffer[WS_G(offset)] & 0x0F);
-
-		WS_G(haveMask) = (buffer[WS_G(offset) + 1] >> 7) & 1;
-		WS_G(len) = buffer[WS_G(offset) + 1] & 0x7f;
-		WS_G(payload) = emalloc(WS_G(len) + 1);
-		WS_G(payload)[WS_G(len)] = 0;
-
-		if(WS_G(opcode) == 1 || WS_G(opcode) == 2) { 
-			if(WS_G(len) <= 125) {
-				WS_G(step) = 2;
-			} else {
-				WS_G(step) = 1;	
-			}
-			
-			WS_G(offset) += 2;
-		} else if(WS_G(opcode) == 8) { //closeframe
-			request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
-			ap_lingering_close(r->connection);
-			WS_G(offset) += 2;
-		} else if(WS_G(opcode) == 9) { //ping
-			WS_G(offset) += 2;	
-			WS_G(step) = 0;
-			
-			//send pong
-			ws_send_message("", 0, 10);
-		} else { //try to resolve errors or unknown frames
-			WS_G(offset) += 2;	
-			WS_G(step) = 0;		
-		}
-	}
-
-	//read length
-	if(WS_G(step) == 1) {
-		
-		if (WS_G(len) == 126 && WS_G(offset) + 2 < blen) {
-			WS_G(len) = 0;
-			WS_G(len) = ((unsigned char)buffer[WS_G(offset)] << 8) + (unsigned char)buffer[WS_G(offset) + 1];
-
-			WS_G(payload) = emalloc(WS_G(len) + 1);
-			WS_G(payload)[WS_G(len)] = 0;
-			WS_G(offset) += 2; 
-	
-			WS_G(step) = 2;
-		} 
-	
-		if (WS_G(len) == 127 && WS_G(offset) + 8 < blen) {
-			
-			long l = (long)((unsigned char)buffer[WS_G(offset)]) << 56 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 1]) << 48 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 2]) << 40 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 3]) << 32 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 4]) << 24 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 5]) << 16 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 6]) << 8 | 
-					 (long)((unsigned char)buffer[WS_G(offset) + 7]);
-					
-			WS_G(len) = l;
-			WS_G(payload) = emalloc(WS_G(len) + 1);
-			WS_G(payload)[WS_G(len)] = 0;
-			WS_G(offset) += 8;
-
-			WS_G(step) = 2;
-		}
-	}
-
-	//get the mask
-	if(WS_G(step) == 2 && WS_G(offset) + 4 < blen ) {
-		if(WS_G(haveMask)) {
-			memcpy(WS_G(mask), buffer+WS_G(offset), 4);
-			WS_G(offset) += 4;
-		}
-
-		WS_G(step) = 3;
-	}
-
-	//get the payload
-	if(WS_G(step) == 3) {
-		while(WS_G(offset) < blen && WS_G(pos) < WS_G(len)) {
-			if(WS_G(haveMask)) {
-				WS_G(payload)[WS_G(pos)] = buffer[WS_G(offset)] ^ WS_G(mask)[WS_G(pos) % 4];
-			} else {
-				WS_G(payload)[WS_G(pos)] = buffer[WS_G(offset)];
-			}
-		
-			WS_G(offset)++;
-			WS_G(pos)++;
-		}
-
-		if(WS_G(pos) == WS_G(len)) {
-			WS_G(step) = 0;
-			WS_G(pos) = 0;
-			return 1;
-		}
-	}
-	
-	return 0;
-}
-
-PHP_FUNCTION(ws_receive) {
-
 }
 
 PHP_FUNCTION(ws_close) {

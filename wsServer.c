@@ -139,7 +139,7 @@ PHP_METHOD(WsServer, receive) {
 
 	ZVAL_EMPTY_STRING(return_value);
 
-	zval *zReadInBlockingMode = zend_read_property(ws_server_ce, getThis(), ZEND_STRS("readInBlockingMode")-1, 0 TSRMLS_CC);
+	zval *zReadInBlockingMode = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readInBlockingMode")-1, 0 TSRMLS_CC);
 
 	if(Z_BVAL_P(zReadInBlockingMode)) {
 		rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, bufsiz);
@@ -177,18 +177,15 @@ PHP_METHOD(WsServer, processRawData) {
 		ZVAL_STRINGL(data, strcat(Z_STRVAL_P(data), Z_STRVAL_P(zBuffer)), Z_STRLEN_P(data) + Z_STRLEN_P(zBuffer), 1);
 	}
 
-	//
-	//
-
 	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
 
 	//TODO: CALL ON BEFORE PROCESS
 
 	//push data into frame
-	zval *readFrame = zend_read_property(ws_server_ce, getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
+	zval *readFrame = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
 
 	zval *retval_ptr;
-	zend_call_method( &readFrame, ws_frame_ce, NULL, "push",  strlen("push"),  &retval_ptr, 1, data, NULL TSRMLS_CC );
+	zend_call_method( &readFrame, Z_OBJCE_P(readFrame), NULL, "push",  strlen("push"),  &retval_ptr, 1, data, NULL TSRMLS_CC );
 	long readBytes = Z_LVAL_P(retval_ptr);
 
 	if(readBytes == -1) {
@@ -210,15 +207,15 @@ PHP_METHOD(WsServer, processRawData) {
 			ZVAL_EMPTY_STRING(data);
 		}
 
-		zend_update_property(ws_server_ce, getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
+		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
 	}
 
-	zval *currentLength = zend_read_property(ws_frame_ce, readFrame, ZEND_STRS("currentLength")-1, 0 TSRMLS_CC);
-	zval *payloadLength = zend_read_property(ws_frame_ce, readFrame, ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC);
+	zval *currentLength = zend_read_property(Z_OBJCE_P(readFrame), readFrame, ZEND_STRS("currentLength")-1, 0 TSRMLS_CC);
+	zval *payloadLength = zend_read_property(Z_OBJCE_P(readFrame), readFrame, ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC);
 
 	if(Z_LVAL_P(currentLength) == Z_LVAL_P(payloadLength)) {
 		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "onmessage", sizeof("onmessage")-1,  NULL, 1, readFrame, NULL TSRMLS_CC );
-		zend_call_method( &readFrame, ws_frame_ce, NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
+		zend_call_method( &readFrame, Z_OBJCE_P(readFrame), NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
 	}
 
 	//TODO: CALL ON AFTER PROCESS
@@ -234,8 +231,8 @@ PHP_METHOD(WsServer, onMessage) {
 		return;
 	}
 
-	zval *z_onMessage = zend_read_property(ws_server_ce, getThis(), ZEND_STRS("_onMessage")-1, 0 TSRMLS_CC);
-	zval *zReadFrame = zend_read_property(ws_server_ce, getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
+	zval *z_onMessage = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_onMessage")-1, 0 TSRMLS_CC);
+	zval *zReadFrame = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
 
 	zend_fcall_info *fci;
 	zend_fcall_info_cache *fcc;
@@ -246,7 +243,6 @@ PHP_METHOD(WsServer, onMessage) {
 	}
 
 	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  NULL, 2, z_onMessage, zReadFrame TSRMLS_CC );
-
 }
 
 PHP_METHOD(WsServer, setOnMessage) {
@@ -257,7 +253,7 @@ PHP_METHOD(WsServer, setOnMessage) {
 		return;
 	}
 
-	zend_update_property(ws_server_ce, getThis(), ZEND_STRS("_onMessage")-1, zCall TSRMLS_CC);
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_onMessage")-1, zCall TSRMLS_CC);
 }
 
 PHP_METHOD(WsServer, callback) {
@@ -288,7 +284,6 @@ PHP_METHOD(WsServer, serve) {
 		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "receive", sizeof("receive")-1, &retval_ptr, 0, NULL, NULL TSRMLS_CC );
 
 		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "processrawdata", sizeof("processrawdata")-1,  NULL, 1, retval_ptr, NULL TSRMLS_CC );
-
 
 		zval *zReadInBlockingMode = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readInBlockingMode")-1, 0 TSRMLS_CC);
 		zval *zReadInterval = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readInterval")-1, 0 TSRMLS_CC);
