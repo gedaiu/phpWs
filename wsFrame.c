@@ -290,7 +290,7 @@ PHP_METHOD(WsFrame, encode) {
 
 	int haveMask = Z_BVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("haveMask")-1, 0 TSRMLS_CC));
 	char *mask = Z_STRVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("mask")-1, 0 TSRMLS_CC));
-	char *maskLen = Z_STRLEN_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("mask")-1, 0 TSRMLS_CC));
+	int maskLen = Z_STRLEN_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("mask")-1, 0 TSRMLS_CC));
 
 	if(payloadLength != currentLength) {
 		php_error_docref(NULL TSRMLS_CC, E_NOTICE, "payloadLength is not equal with currentLength. Do you have an incomplete frame?");

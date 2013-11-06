@@ -128,9 +128,7 @@ ZEND_GET_MODULE(websockets)
 
 ZEND_DECLARE_MODULE_GLOBALS(websockets);
 
-
-
-char* getHeader(char* key) {
+char* getHeader(char* key TSRMLS_DC) {
     zval **server_vars;
     zval **var;
 
@@ -145,7 +143,7 @@ char* getHeader(char* key) {
     return NULL;
 }
 
-char* getSec(char* key) {
+char* getSec(char* key TSRMLS_DC) {
 	
 	SHA_CTX ctx;
 
@@ -176,9 +174,9 @@ char* frame_concat(char* arr1, long len1, char* arr2, long len2) {
  */
 PHP_FUNCTION(is_ws)
 {
-    char *version = getHeader("HTTP_SEC_WEBSOCKET_VERSION");
-    char *upgrade = getHeader("HTTP_UPGRADE");
-    char *key = getHeader("HTTP_SEC_WEBSOCKET_KEY");
+    char *version = getHeader("HTTP_SEC_WEBSOCKET_VERSION" TSRMLS_CC);
+    char *upgrade = getHeader("HTTP_UPGRADE" TSRMLS_CC);
+    char *key = getHeader("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC);
 
     if(version == NULL || strcmp(version, "13") != 0) {
         RETURN_FALSE;
@@ -200,7 +198,9 @@ PHP_FUNCTION(ws_handshake) {
 
 	//Since we are handling a WebSocket connection, not a standard HTTP
 	//connection, remove the HTTP input filter.
-
+  //websocket headers
+  sapi_header_line ctr = {0};
+  int responseNo = 101;
 	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
 
 	ap_filter_t *input_filter;
@@ -219,12 +219,11 @@ PHP_FUNCTION(ws_handshake) {
 	apr_table_clear(r->headers_out);
 	//apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
 
-    //set the status
-	int responseNo = 101;
-    sapi_header_op(SAPI_HEADER_SET_STATUS, 101 TSRMLS_CC);
+  ctr.line = "Status: 101";
+  ctr.line_len = sizeof("Status: 101") -1;
+  sapi_header_op(SAPI_HEADER_SET_STATUS, &ctr TSRMLS_CC);
     
-    //websocket headers
-    sapi_header_line ctr = {0};
+    
     ctr.line = "Upgrade: websocket";
     ctr.line_len = strlen(ctr.line);
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
@@ -233,11 +232,11 @@ PHP_FUNCTION(ws_handshake) {
     ctr.line_len = strlen(ctr.line);
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
-	ctr.line = "Connection: Upgrade";
+	  ctr.line = "Connection: Upgrade";
     ctr.line_len = strlen(ctr.line);
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
-    char *clientKey = getHeader("HTTP_SEC_WEBSOCKET_KEY"); 
+    char *clientKey = getHeader("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC); 
 
     if(clientKey != NULL) {
         //crea 	te the key
@@ -245,14 +244,13 @@ PHP_FUNCTION(ws_handshake) {
         sprintf(key, "%s258EAFA5-E914-47DA-95CA-C5AB0DC85B11", clientKey);
 
         //hash the key
-        char *target = getSec(key);
+        char *target = getSec(key TSRMLS_CC);
        
         //create header
         char *sec = emalloc((size_t) (strlen("Sec-WebSocket-Accept: ") + 100) );
         sprintf(sec, "Sec-WebSocket-Accept: %s", target);
         
         //send the header
-        sapi_header_line ctr = {0};
         ctr.line = sec;
         ctr.line_len = strlen(sec);
         sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC); 
@@ -287,13 +285,13 @@ PHP_FUNCTION(ws_handshake) {
 		RETURN_TRUE;
     }
 
-	php_error_docref(NULL TSRMLS_CC, E_WARNING, "Missing 'Sec-WebSocket-Key' header. Can't handshake with the client.");
+	  php_error_docref(NULL TSRMLS_CC, E_WARNING, "Missing 'Sec-WebSocket-Key' header. Can't handshake with the client.");
 
     RETURN_FALSE;
 }
 
 
-void ws_send_message(char* str, long len, int opcode) {
+void ws_send_message(char* str, long len, int opcode TSRMLS_DC) {
 	char *frame;
 
 	int frameLen = 0;
@@ -372,7 +370,7 @@ PHP_FUNCTION(ws_send) {
 
     //send message as string
     if(Z_TYPE_P(msg) == IS_STRING) {
-		ws_send_message(Z_STRVAL_P(msg), Z_STRLEN_P(msg), 1);
+		ws_send_message(Z_STRVAL_P(msg), Z_STRLEN_P(msg), 1 TSRMLS_CC);
 		RETURN_TRUE;
 	}
 
