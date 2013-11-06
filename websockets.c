@@ -78,11 +78,11 @@ PHP_MINIT_FUNCTION(websockets)
 	memcpy(&ws_server_object_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
 	ws_server_object_handlers.clone_obj = NULL;
 
-	//init frame property
+	//init server propertyes
 	zend_declare_property_bool(ws_server_ce, ZEND_STRS("readInBlockingMode")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	zend_declare_property_long(ws_server_ce, ZEND_STRS("readInterval") - 1, 1000, ZEND_ACC_PUBLIC TSRMLS_CC);
-	zend_declare_property_bool(ws_server_ce, ZEND_STRS("serving") - 1, 1, ZEND_ACC_PUBLIC TSRMLS_CC);
+	zend_declare_property_bool(ws_server_ce, ZEND_STRS("serving") - 1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	zend_declare_property_null(ws_server_ce, ZEND_STRS("readFrame") - 1, ZEND_ACC_PUBLIC TSRMLS_CC);
 	zend_declare_property_string(ws_server_ce, ZEND_STRS("readBuffer") - 1, "", ZEND_ACC_PUBLIC TSRMLS_CC);

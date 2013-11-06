@@ -195,6 +195,8 @@ PHP_METHOD(WsServer, receive) {
 				ZVAL_STRINGL(return_value, buffer, bufsiz, 1);
 			}
 		}
+	} else {
+		zend_update_property_bool(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 0 TSRMLS_CC);
 	}
 	
 	apr_brigade_destroy(bb);
@@ -300,7 +302,7 @@ PHP_METHOD(WsServer, callback) {
 
 /* {{{ */
 PHP_METHOD(WsServer, serve) {
-	zend_update_property_long(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 1 TSRMLS_CC);
+	zend_update_property_bool(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 1 TSRMLS_CC);
 
 	int serving = 1;
 
@@ -320,6 +322,9 @@ PHP_METHOD(WsServer, serve) {
 			usleep(Z_LVAL_P(zReadInterval));
 		}
 	}
+
+	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
+	ap_lingering_close(r->connection);
 }
 /* }}} */
 
