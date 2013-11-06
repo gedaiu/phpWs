@@ -129,7 +129,6 @@ PHP_METHOD(WsFrame, push) {
 	int RSV2 = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("RSV2")-1, 0 TSRMLS_CC));
 	int RSV3 = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("RSV3")-1, 0 TSRMLS_CC));
 
-
 	int opcode = Z_LVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("opcode")-1, 0 TSRMLS_CC));
 
 	int haveMask = Z_BVAL_P(zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("haveMask")-1, 0 TSRMLS_CC));

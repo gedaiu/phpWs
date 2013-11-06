@@ -347,8 +347,15 @@ void ws_send_message(char* str, long len, int opcode) {
 	}
 
 	PHPWRITE(frame, frameLen);
-	PHPWRITE(str, strlen(str));
 	sapi_flush(TSRMLS_C);
+
+	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
+
+	ap_filter_t *of = r->connection->output_filters;
+
+	ap_fwrite(of, WS_G(obb), str, strlen(str));
+   	ap_fflush(of, WS_G(obb));
+
 }
 
 PHP_FUNCTION(ws_send) {
@@ -370,8 +377,12 @@ PHP_FUNCTION(ws_send) {
     	zval *retval_ptr;
     	zend_call_method( &msg, Z_OBJCE_P(msg), NULL, "encode", sizeof("encode")-1,  &retval_ptr, 0, NULL, NULL TSRMLS_CC );
 
-    	PHPWRITE(Z_STRVAL_P(retval_ptr), Z_STRLEN_P(retval_ptr));
-    	sapi_flush(TSRMLS_C);
+    	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
+
+		ap_filter_t *of = r->connection->output_filters;
+
+		ap_fwrite(of, WS_G(obb), Z_STRVAL_P(retval_ptr), Z_STRLEN_P(retval_ptr));
+		ap_fflush(of, WS_G(obb));
 
     	RETURN_TRUE;
 	}

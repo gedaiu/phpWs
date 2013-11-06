@@ -120,7 +120,6 @@ PHP_METHOD(WsServer, __construct) {
 }
 
 PHP_METHOD(WsServer, receive) {
-
 	//TODO: CALL ON BEFORE READ
 
 	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
@@ -170,57 +169,53 @@ PHP_METHOD(WsServer, processRawData) {
 		return;
 	}
 
-	zval *data = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, 0 TSRMLS_CC);
+	smart_str concat = {0};
 
-	if(Z_STRLEN_P(data) == 0) {
-	} else {
-		ZVAL_STRINGL(data, strcat(Z_STRVAL_P(data), Z_STRVAL_P(zBuffer)), Z_STRLEN_P(data) + Z_STRLEN_P(zBuffer), 1);
-	}
+	//append to the read buffer
+	zval *zReadBuffer = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, 0 TSRMLS_CC);
+	smart_str_appendl(&concat, Z_STRVAL_P(zReadBuffer), Z_STRLEN_P(zReadBuffer));
+	smart_str_appendl(&concat, Z_STRVAL_P(zBuffer), Z_STRLEN_P(zBuffer));
 
-	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
+	//update the buffer
+	zend_update_property_stringl(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, concat.c, concat.len TSRMLS_CC);
+	ZVAL_STRINGL(zBuffer, concat.c, concat.len, 1);
 
-	//TODO: CALL ON BEFORE PROCESS
-
-	//push data into frame
-	zval *readFrame = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
+	//pass data to the reading frame
+	zval *zReadFrame = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
 
 	zval *retval_ptr;
-	zend_call_method( &readFrame, Z_OBJCE_P(readFrame), NULL, "push",  strlen("push"),  &retval_ptr, 1, data, NULL TSRMLS_CC );
-	long readBytes = Z_LVAL_P(retval_ptr);
+	zend_call_method( &zReadFrame, Z_OBJCE_P(zReadFrame), NULL, "push",  strlen("push"),  &retval_ptr, 1, zBuffer, NULL TSRMLS_CC );
 
-	if(readBytes == -1) {
-		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 0 TSRMLS_CC);
-	}
+	int readBytes = Z_LVAL_P(retval_ptr);
 
 	if(readBytes > 0) {
-		char *buffer = Z_STRVAL_P(data);
-		long buffer_len = (long)Z_STRLEN_P(data);
 
 		//remove data from buffer
-		if(readBytes < buffer_len) {
-			buffer_len -= readBytes;
-			memmove(buffer, buffer + readBytes, data->value.str.len);
-			data->value.str.val = erealloc(data->value.str.val, data->value.str.len);
+		if(readBytes < concat.len) {
+			concat.len -= readBytes;
+			memmove(concat.c, concat.c + readBytes, concat.len);
 
-			ZVAL_STRINGL(data, buffer, buffer_len, 0);
+			ZVAL_STRINGL(zBuffer, concat.c, concat.len, 1);
 		} else {
-			ZVAL_EMPTY_STRING(data);
+
+			ZVAL_EMPTY_STRING(zBuffer);
 		}
 
-		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, data TSRMLS_CC);
+		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, zBuffer TSRMLS_CC);
 	}
 
-	zval *currentLength = zend_read_property(Z_OBJCE_P(readFrame), readFrame, ZEND_STRS("currentLength")-1, 0 TSRMLS_CC);
-	zval *payloadLength = zend_read_property(Z_OBJCE_P(readFrame), readFrame, ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC);
 
-	if(Z_LVAL_P(currentLength) == Z_LVAL_P(payloadLength)) {
-		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "onmessage", sizeof("onmessage")-1,  NULL, 1, readFrame, NULL TSRMLS_CC );
-		zend_call_method( &readFrame, Z_OBJCE_P(readFrame), NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
+	long currentLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(zReadFrame), zReadFrame, ZEND_STRS("currentLength")-1, 0 TSRMLS_CC));
+	long payloadLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(zReadFrame), zReadFrame, ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC));
+
+	if(currentLength == payloadLength) {
+		zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "onmessage", sizeof("onmessage")-1,  NULL, 1, zReadFrame, NULL TSRMLS_CC );
+		zend_call_method( &zReadFrame, Z_OBJCE_P(zReadFrame), NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
 	}
 
 	//TODO: CALL ON AFTER PROCESS
-	
-	RETURN_TRUE;
+
+	RETURN_FALSE;
 }
 
 
@@ -275,7 +270,7 @@ PHP_METHOD(WsServer, callback) {
 }
 
 PHP_METHOD(WsServer, serve) {
-	//zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 1 TSRMLS_CC);
+	zend_update_property_long(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 1 TSRMLS_CC);
 
 	int serving = 1;
 
