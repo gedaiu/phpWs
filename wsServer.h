@@ -32,8 +32,16 @@ PHP_METHOD(WsServer, serve);
 
 PHP_METHOD(WsServer, callback);
 
+PHP_METHOD(WsServer, beforeRead);
+PHP_METHOD(WsServer, afterRead);
+PHP_METHOD(WsServer, beforeProcess);
+PHP_METHOD(WsServer, afterProcess);
 PHP_METHOD(WsServer, onMessage);
-PHP_METHOD(WsServer, setOnMessage);
 
+PHP_METHOD(WsServer, setBeforeRead);
+PHP_METHOD(WsServer, setAfterRead);
+PHP_METHOD(WsServer, setBeforeProcess);
+PHP_METHOD(WsServer, setAfterProcess);
+PHP_METHOD(WsServer, setOnMessage);
 
 #endif

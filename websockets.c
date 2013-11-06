@@ -88,6 +88,10 @@ PHP_MINIT_FUNCTION(websockets)
 	zend_declare_property_string(ws_server_ce, ZEND_STRS("readBuffer") - 1, "", ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	zend_declare_property_null(ws_server_ce, ZEND_STRS("_onMessage") - 1, ZEND_ACC_PROTECTED TSRMLS_CC);
+	zend_declare_property_null(ws_server_ce, ZEND_STRS("_beforeRead") - 1, ZEND_ACC_PROTECTED TSRMLS_CC);
+	zend_declare_property_null(ws_server_ce, ZEND_STRS("_afterRead") - 1, ZEND_ACC_PROTECTED TSRMLS_CC);
+	zend_declare_property_null(ws_server_ce, ZEND_STRS("_beforeProcess") - 1, ZEND_ACC_PROTECTED TSRMLS_CC);
+	zend_declare_property_null(ws_server_ce, ZEND_STRS("_afterProcess") - 1, ZEND_ACC_PROTECTED TSRMLS_CC);
 
 	return SUCCESS;
 }

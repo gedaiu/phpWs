@@ -46,15 +46,44 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_callback, 0, 0, 1)
 	ZEND_ARG_INFO(0, function)
 ZEND_END_ARG_INFO()
 
+
+
 ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_onMessage, 0, 0, 1)
 	ZEND_ARG_INFO(0, WsFrame)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_beforeRead, 0, 0, 1)
+ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_setOnMessage, 0, 0, 1)
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_afterRead, 0, 0, 1)
+	ZEND_ARG_INFO(0, string)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_beforeProcess, 0, 0, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_afterProcess, 0, 0, 1)
+	ZEND_ARG_INFO(0, WsFrame)
+ZEND_END_ARG_INFO()
+
+
+
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_setBeforeRead, 0, 0, 1)
 	ZEND_ARG_INFO(0, function)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_setAfterRead, 0, 0, 1)
+	ZEND_ARG_INFO(0, function)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_setBeforeProcess, 0, 0, 1)
+	ZEND_ARG_INFO(0, function)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ws_server_setAfterProcess, 0, 0, 1)
+	ZEND_ARG_INFO(0, function)
+ZEND_END_ARG_INFO()
 
 /**
  * Delete CmsValue object
@@ -103,12 +132,23 @@ zend_function_entry ws_server_methods[] = {
 
 	PHP_ME(WsServer, callback, arginfo_ws_server_callback, ZEND_ACC_PRIVATE)
 
+	//callbacks
 	PHP_ME(WsServer, onMessage, arginfo_ws_server_onMessage, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, beforeRead, arginfo_ws_server_beforeRead, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, afterRead, arginfo_ws_server_afterRead, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, beforeProcess, arginfo_ws_server_beforeProcess, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, afterProcess, arginfo_ws_server_afterProcess, ZEND_ACC_PUBLIC)
+
 	PHP_ME(WsServer, setOnMessage, arginfo_ws_server_onMessage, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, setBeforeRead, arginfo_ws_server_setBeforeRead, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, setAfterRead, arginfo_ws_server_setAfterRead, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, setBeforeProcess, arginfo_ws_server_setBeforeProcess, ZEND_ACC_PUBLIC)
+	PHP_ME(WsServer, setAfterProcess, arginfo_ws_server_setAfterProcess, ZEND_ACC_PUBLIC)
+
 	{NULL, NULL, NULL}
 };
 
-
+/* {{{ */
 PHP_METHOD(WsServer, __construct) {
 	//create the reading WsFrame object
 	zval *zobj_wsFrame;
@@ -118,9 +158,12 @@ PHP_METHOD(WsServer, __construct) {
 
 	zend_update_property(ws_server_ce, getThis(), ZEND_STRS("readFrame")-1, zobj_wsFrame TSRMLS_CC);
 }
+/* }}} */
 
+/* {{{ */
 PHP_METHOD(WsServer, receive) {
-	//TODO: CALL ON BEFORE READ
+
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "beforeread", sizeof("beforeread")-1,  NULL, 0, NULL, NULL TSRMLS_CC );
 
 	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
 
@@ -158,9 +201,15 @@ PHP_METHOD(WsServer, receive) {
 	apr_bucket_alloc_destroy(bucket_alloc);
 	apr_pool_destroy(pool);
 
-	//TODO: CALL ON AFTER READ
-}
+	zval *zparam;
+	ALLOC_ZVAL(zparam);
+	ZVAL_STRINGL(zparam, buffer, bufsiz, 1);
 
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "afterread", sizeof("afterread")-1,  NULL, 1, zparam, NULL TSRMLS_CC );
+}
+/* }}} */
+
+/* {{{ */
 PHP_METHOD(WsServer, processRawData) {
 	zval *zBuffer;
 
@@ -183,7 +232,16 @@ PHP_METHOD(WsServer, processRawData) {
 	//pass data to the reading frame
 	zval *zReadFrame = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
 
+
+	//call beforeRad callback and check it's return to see
+	//if we start the process
 	zval *retval_ptr;
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "beforeprocess", sizeof("beforeprocess")-1,  &retval_ptr, 1, zReadFrame, NULL TSRMLS_CC );
+	if(!Z_BVAL_P(retval_ptr)) {
+		RETURN_TRUE;
+	}
+
+	//push data into the read frame
 	zend_call_method( &zReadFrame, Z_OBJCE_P(zReadFrame), NULL, "push",  strlen("push"),  &retval_ptr, 1, zBuffer, NULL TSRMLS_CC );
 
 	int readBytes = Z_LVAL_P(retval_ptr);
@@ -204,7 +262,6 @@ PHP_METHOD(WsServer, processRawData) {
 		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, zBuffer TSRMLS_CC);
 	}
 
-
 	long currentLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(zReadFrame), zReadFrame, ZEND_STRS("currentLength")-1, 0 TSRMLS_CC));
 	long payloadLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(zReadFrame), zReadFrame, ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC));
 
@@ -213,44 +270,15 @@ PHP_METHOD(WsServer, processRawData) {
 		zend_call_method( &zReadFrame, Z_OBJCE_P(zReadFrame), NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
 	}
 
-	//TODO: CALL ON AFTER PROCESS
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "afterprocess", sizeof("afterprocess")-1,  NULL, 1, zReadFrame, NULL TSRMLS_CC );
 
 	RETURN_FALSE;
 }
+/* }}} */
 
 
-PHP_METHOD(WsServer, onMessage) {
-	zval *zFrame;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zFrame) == FAILURE) {
-		return;
-	}
-
-	zval *z_onMessage = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_onMessage")-1, 0 TSRMLS_CC);
-	zval *zReadFrame = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readFrame")-1, 0 TSRMLS_CC);
-
-	zend_fcall_info *fci;
-	zend_fcall_info_cache *fcc;
-	char *is_callable_error = NULL;
-
-	if (Z_TYPE_P(z_onMessage) == IS_NULL) {
-		return;
-	}
-
-	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  NULL, 2, z_onMessage, zReadFrame TSRMLS_CC );
-}
-
-PHP_METHOD(WsServer, setOnMessage) {
-
-	zval *zCall;
-
-	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zCall)) {
-		return;
-	}
-
-	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_onMessage")-1, zCall TSRMLS_CC);
-}
-
+/* {{{ */
 PHP_METHOD(WsServer, callback) {
 	zval *params, *retval_ptr = NULL;
 	zend_fcall_info fci;
@@ -268,7 +296,9 @@ PHP_METHOD(WsServer, callback) {
 
 	zend_fcall_info_args_clear(&fci, 1);
 }
+/* }}} */
 
+/* {{{ */
 PHP_METHOD(WsServer, serve) {
 	zend_update_property_long(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("serving")-1, 1 TSRMLS_CC);
 
@@ -291,4 +321,172 @@ PHP_METHOD(WsServer, serve) {
 		}
 	}
 }
+/* }}} */
 
+
+/* {{{ */
+PHP_METHOD(WsServer, onMessage) {
+	zval *zFrame;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zFrame) == FAILURE) {
+		return;
+	}
+
+	zval *z_onMessage = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_onMessage")-1, 0 TSRMLS_CC);
+
+	zend_fcall_info *fci;
+	zend_fcall_info_cache *fcc;
+	char *is_callable_error = NULL;
+
+	if (Z_TYPE_P(z_onMessage) == IS_NULL) {
+		return;
+	}
+
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  NULL, 2, z_onMessage, zFrame TSRMLS_CC );
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, beforeRead) {
+	zval *z_beforeRead = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_beforeRead")-1, 0 TSRMLS_CC);
+
+	if (Z_TYPE_P(z_beforeRead) == IS_NULL) {
+		RETURN_TRUE;
+	}
+
+	zval *retval_ptr = NULL;
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  &retval_ptr, 1, z_beforeRead, 0 TSRMLS_CC );
+
+	if(retval_ptr && Z_LVAL_P(retval_ptr)) {
+		RETURN_TRUE;
+	}
+
+	RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, afterRead) {
+	zval *zParam;
+
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zParam)) {
+		return;
+	}
+
+	zval *z_afterRead = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_afterRead")-1, 0 TSRMLS_CC);
+
+	if (Z_TYPE_P(z_afterRead) == IS_NULL) {
+		return;
+	}
+
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  NULL, 2, z_afterRead, zParam TSRMLS_CC );
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, beforeProcess) {
+	zval *z_beforeProcess = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_beforeProcess")-1, 0 TSRMLS_CC);
+
+	if (Z_TYPE_P(z_beforeProcess) == IS_NULL) {
+		RETURN_TRUE;
+	}
+
+	zval *retval_ptr;
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  &retval_ptr, 1, z_beforeProcess, 0 TSRMLS_CC );
+
+	if(retval_ptr && Z_LVAL_P(retval_ptr)) {
+		RETURN_TRUE;
+	}
+
+	RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, afterProcess) {
+	zval *zFrame;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zFrame) == FAILURE) {
+		return;
+	}
+
+	zval *z_afterProcess = zend_read_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_afterProcess")-1, 0 TSRMLS_CC);
+
+	zend_fcall_info *fci;
+	zend_fcall_info_cache *fcc;
+	char *is_callable_error = NULL;
+
+	if (Z_TYPE_P(z_afterProcess) == IS_NULL) {
+		return;
+	}
+
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "callback", sizeof("callback")-1,  NULL, 2, z_afterProcess, zFrame TSRMLS_CC );
+
+}
+/* }}} */
+
+
+/* {{{ */
+PHP_METHOD(WsServer, setOnMessage) {
+
+	zval *zCall;
+
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zCall)) {
+		return;
+	}
+
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_onMessage")-1, zCall TSRMLS_CC);
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, setBeforeRead){
+
+	zval *zCall;
+
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zCall)) {
+		return;
+	}
+
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_beforeRead")-1, zCall TSRMLS_CC);
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, setAfterRead) {
+
+	zval *zCall;
+
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zCall)) {
+		return;
+	}
+
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_afterRead")-1, zCall TSRMLS_CC);
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, setBeforeProcess){
+
+	zval *zCall;
+
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zCall)) {
+		return;
+	}
+
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_beforeProcess")-1, zCall TSRMLS_CC);
+}
+/* }}} */
+
+/* {{{ */
+PHP_METHOD(WsServer, setAfterProcess){
+
+	zval *zCall;
+
+	if (FAILURE == zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &zCall)) {
+		return;
+	}
+
+	zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("_afterProcess")-1, zCall TSRMLS_CC);
+}
+/* }}} */
