@@ -142,6 +142,54 @@ This class handles the connection with the client.
 	protected void function(WsFrame $frame)  _afterProcess
 		callback after the processing was made. The first argument is the reading frame
 		
+#### Methods
+
+	$ public __construct()
+		Create the object and set the default values
+		
+	$ public string receive()
+		Receive data from the client. 
+		Return the raw received data	
+		
+		
+	$ public bool processRawData(string $data)
+		Adds $data to the readingBuffer and push it to the readFrame
+
+	$ public void serve()
+		Start to serving the client
+
+	$ private callback(string $method, $arg1, ...);
+		Call the $method with the arguments
+	
+	$ public void function(WsFrame $frame) onMessage
+		Trigger the onMessage event
+		
+	$ public bool function() beforeRead
+		Trigger the beforeRead event
+		
+	$ public void function(string $data) afterRead
+		Trigger the afterRead event
+	
+	$ public bool function() beforeProcess
+		Trigger the beforeProcess event
+		
+	$ public void function(WsFrame $frame)  afterProcess
+		Trigger the afterProcess event
+
+	$ public void function(function $callback) setBeforeRead
+		Set the beforeRead callback
+		
+	$ public void function(function $callback) setAfterRead
+		Set the afterRead callback
+
+	$ public void function(function $callback) setBeforeProcess
+		Set the beforeProcess callback
+
+	$ public void function(function $callback) setAfterProcess
+		Set the afterProcess callback
+	
+	$ public void function(function $callback) setOnMessage
+		Set the onMessage callback
 	
 
 ## Functions
