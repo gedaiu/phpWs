@@ -233,8 +233,8 @@ PHP_FUNCTION(ws_handshake) {
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
 	ctr.line = "Connection: Upgrade";
-    ctr.line_len = strlen(ctr.line);
-    sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
+	ctr.line_len = strlen(ctr.line);
+	sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
     char *clientKey = getHeader("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC); 
 
