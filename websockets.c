@@ -198,9 +198,7 @@ PHP_FUNCTION(ws_handshake) {
 
 	//Since we are handling a WebSocket connection, not a standard HTTP
 	//connection, remove the HTTP input filter.
-  //websocket headers
-  sapi_header_line ctr = {0};
-  int responseNo = 101;
+
 	request_rec *r = (request_rec *)(((SG(server_context) == NULL) ? NULL : ((php_struct*)SG(server_context))->r));
 
 	ap_filter_t *input_filter;
@@ -217,13 +215,15 @@ PHP_FUNCTION(ws_handshake) {
 	}
 	
 	apr_table_clear(r->headers_out);
-	//apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
+	r->connection->keepalive = AP_CONN_KEEPALIVE;
+	apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
 
-  ctr.line = "Status: 101";
-  ctr.line_len = sizeof("Status: 101") -1;
-  sapi_header_op(SAPI_HEADER_SET_STATUS, &ctr TSRMLS_CC);
+    //set the status
+	int responseNo = 101;
+    sapi_header_op(SAPI_HEADER_SET_STATUS, 101 TSRMLS_CC);
     
-    
+    //websocket headers
+    sapi_header_line ctr = {0};
     ctr.line = "Upgrade: websocket";
     ctr.line_len = strlen(ctr.line);
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
@@ -232,7 +232,7 @@ PHP_FUNCTION(ws_handshake) {
     ctr.line_len = strlen(ctr.line);
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
-	  ctr.line = "Connection: Upgrade";
+	ctr.line = "Connection: Upgrade";
     ctr.line_len = strlen(ctr.line);
     sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
@@ -285,7 +285,7 @@ PHP_FUNCTION(ws_handshake) {
 		RETURN_TRUE;
     }
 
-	  php_error_docref(NULL TSRMLS_CC, E_WARNING, "Missing 'Sec-WebSocket-Key' header. Can't handshake with the client.");
+	php_error_docref(NULL TSRMLS_CC, E_WARNING, "Missing 'Sec-WebSocket-Key' header. Can't handshake with the client.");
 
     RETURN_FALSE;
 }
