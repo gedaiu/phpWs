@@ -12,11 +12,11 @@ if test "$PHP_WEBSOCKETS" = "yes"; then
 	PHP_REQUIRE_CXX()
 	PHP_ADD_LIBRARY(stdc++, 1, WEBSOCKETS_SHARED_LIBADD)
 
-  if test "x$PHP_WEBSOCKETS_PHP_INCLUDES" == "xno"; then
+  if test "x$PHP_WEBSOCKETS_PHP_INCLUDES" == "xno" || test "x$PHP_WEBSOCKETS_PHP_INCLUDES" == "xyes"; then
     PHP_WEBSOCKETS_PHP_INCLUDES=/usr/include/php
   fi
   
-  if test "x$PHP_WEBSOCKETS_HTTPD_INCLUDES" == "xno"; then
+  if test "x$PHP_WEBSOCKETS_HTTPD_INCLUDES" == "xno" || test "x$PHP_WEBSOCKETS_HTTPD_INCLUDES" == "xyes"; then
     PHP_WEBSOCKETS_HTTPD_INCLUDES=/usr/include
   fi
 
