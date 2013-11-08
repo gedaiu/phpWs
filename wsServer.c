@@ -264,6 +264,8 @@ PHP_METHOD(WsServer, processRawData) {
 		zend_update_property(Z_OBJCE_P(getThis()), getThis(), ZEND_STRS("readBuffer")-1, zBuffer TSRMLS_CC);
 	}
 
+	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "afterprocess", sizeof("afterprocess")-1,  NULL, 1, zReadFrame, NULL TSRMLS_CC );
+
 	long currentLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(zReadFrame), zReadFrame, ZEND_STRS("currentLength")-1, 0 TSRMLS_CC));
 	long payloadLength = Z_LVAL_P(zend_read_property(Z_OBJCE_P(zReadFrame), zReadFrame, ZEND_STRS("payloadLength")-1, 0 TSRMLS_CC));
 
@@ -272,7 +274,6 @@ PHP_METHOD(WsServer, processRawData) {
 		zend_call_method( &zReadFrame, Z_OBJCE_P(zReadFrame), NULL, "reset",  strlen("reset"),  NULL, 0, NULL, NULL TSRMLS_CC );
 	}
 
-	zend_call_method( &getThis(), Z_OBJCE_P(getThis()), NULL, "afterprocess", sizeof("afterprocess")-1,  NULL, 1, zReadFrame, NULL TSRMLS_CC );
 
 	RETURN_FALSE;
 }

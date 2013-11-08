@@ -128,7 +128,7 @@ ZEND_GET_MODULE(websockets)
 
 ZEND_DECLARE_MODULE_GLOBALS(websockets);
 
-char* getHeader(char* key TSRMLS_DC) {
+char* get_header(char* key TSRMLS_DC) {
     zval **server_vars;
     zval **var;
 
@@ -143,7 +143,7 @@ char* getHeader(char* key TSRMLS_DC) {
     return NULL;
 }
 
-char* getSec(char* key TSRMLS_DC) {
+char* get_sec(char* key TSRMLS_DC) {
 	
 	SHA_CTX ctx;
 
@@ -158,15 +158,6 @@ char* getSec(char* key TSRMLS_DC) {
 	return php_base64_encode((unsigned char*)hash, SHA_DIGEST_LENGTH, &ret_length);
 }
 
-char* frame_concat(char* arr1, long len1, char* arr2, long len2) {
-	char* total = emalloc(len1 + len2); // array to hold the result
-
-	memcpy(total, arr1, len1);
-	memcpy(total + len1, arr2, len2);
-	
-	return total;
-}
-
 /**
  * Check if the current request is a websocket request or not
  * 
@@ -174,9 +165,9 @@ char* frame_concat(char* arr1, long len1, char* arr2, long len2) {
  */
 PHP_FUNCTION(is_ws)
 {
-    char *version = getHeader("HTTP_SEC_WEBSOCKET_VERSION" TSRMLS_CC);
-    char *upgrade = getHeader("HTTP_UPGRADE" TSRMLS_CC);
-    char *key = getHeader("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC);
+    char *version = get_header("HTTP_SEC_WEBSOCKET_VERSION" TSRMLS_CC);
+    char *upgrade = get_header("HTTP_UPGRADE" TSRMLS_CC);
+    char *key = get_header("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC);
 
     if(version == NULL || strcmp(version, "13") != 0) {
         RETURN_FALSE;
@@ -206,15 +197,14 @@ PHP_FUNCTION(ws_handshake) {
 	for (input_filter = r->input_filters;
 		input_filter != NULL;
 		input_filter = input_filter->next) {
+
 			if ((input_filter->frec != NULL) &&
 			(input_filter->frec->name != NULL) &&
 			!strcasecmp(input_filter->frec->name, "http_in")) {
 				ap_remove_input_filter(input_filter);
-				break;
 			}
 	}
 	
-	apr_table_clear(r->headers_out);
 	r->connection->keepalive = AP_CONN_KEEPALIVE;
 	apr_socket_timeout_set(ap_get_module_config(r->connection->conn_config, &core_module), -1);
 
@@ -236,7 +226,7 @@ PHP_FUNCTION(ws_handshake) {
 	ctr.line_len = strlen(ctr.line);
 	sapi_header_op(SAPI_HEADER_REPLACE, &ctr TSRMLS_CC);
 
-    char *clientKey = getHeader("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC); 
+    char *clientKey = get_header("HTTP_SEC_WEBSOCKET_KEY" TSRMLS_CC);
 
     if(clientKey != NULL) {
         //crea 	te the key
@@ -244,7 +234,7 @@ PHP_FUNCTION(ws_handshake) {
         sprintf(key, "%s258EAFA5-E914-47DA-95CA-C5AB0DC85B11", clientKey);
 
         //hash the key
-        char *target = getSec(key TSRMLS_CC);
+        char *target = get_sec(key TSRMLS_CC);
        
         //create header
         char *sec = emalloc((size_t) (strlen("Sec-WebSocket-Accept: ") + 100) );
